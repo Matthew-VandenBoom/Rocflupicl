@@ -1,13 +1,12 @@
 #include "PPICLF_STD.h"
-#:include 'PPICLF_PARTMACROS.fypp'
 
 module ppiclf_solve
     use mpi
     ! particle data
     use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@, @{USEMODVAR(PPICLF_t_ghostParticle, ppiclf_gparts)}@
+    use ppiclf_m_particledata, only: ppiclf_parts, ppiclf_gparts
     ! grid data
-    use ppiclf_data, only: PPICLF_PRO_FLD, PPICLF_PRO_FLD_PICL, PPICLF_INT_FLD_INPUT, PPICLF_INT_FLD, PPICLF_FLUID_GRID, PPICLF_PICL_GRID, PPICLF_PART2CELL_DIST
+    use ppiclf_data, only: PPICLF_PRO_FLD, PPICLF_PRO_FLD_PICL, PPICLF_INT_FLD_INPUT, PPICLF_INT_FLD, PPICLF_PICL_GRID, PPICLF_PART2CELL_DIST
     use ppiclf_data, only: PPICLF_CELL_MAP, PPICLF_CELL_MAP_ORIG, PPICLF_CELL_MAP_INTERP, PPICLF_CELL_MAP_PROJ, PPICLF_NCELLS_FV2PICL, PPICLF_NCELLS_FV2PICL_ORIG, PPICLF_NCELLS_INTERP, PPICLF_NCELLS_PROJ, PPICLF_PART2CELL_MAP, PPICLF_NPART2CELL
     use ppiclf_data, only: ppiclf_nfvcells, ppiclf_int_icnt, ppiclf_int_map, ppiclf_xdrange
     ! particle options variables
@@ -36,6 +35,7 @@ module ppiclf_solve
     use ppiclf_m_particledata, only: CopyRealToGhost
 
     use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_EvalNearestNeighbor, ppiclf_user_SetYdot
+    use ppiclf_user_particle, only: PPICLF_U_t_particle, PPICLF_U_t_ghostParticle,  PPICLF_U_t_interp
     implicit none
     private
 
@@ -63,6 +63,9 @@ module ppiclf_solve
     public :: ppiclf_solve_RemoveParticle
     public :: ppiclf_solve_ProjectParticleGrid
     public :: ppiclf_solve_GetProFld
+
+
+    type(PPICLF_U_t_particle), save :: zeroParticle
     contains
 
     SUBROUTINE ppiclf_solve_Initialize(PP, xi1,xpmin,xpmax,yi1,ypmin,ypmax,zi1,zpmin,zpmax,ai1,apa,apxa,aprin,aprout)
@@ -210,6 +213,8 @@ module ppiclf_solve
             CALL ppiclf_prints('   *End AddParticles$')
         END IF
 
+        call ppiclf_user_ZeroParticle(zeroParticle)
+        
         CALL ppiclf_prints(' End InitParticle$')
         !
         PPICLF_LINIT = .TRUE.
@@ -303,41 +308,25 @@ module ppiclf_solve
     END SUBROUTINE ppiclf_solve_InitParam
 
     ! had PPICLC
-    SUBROUTINE ppiclf_solve_AddParticles(npart,y,rprop)
+    SUBROUTINE ppiclf_solve_AddParticles(particles)
         !
         ! Input: 
         !
-        INTEGER*4  npart
-        REAL*8     y(*)
-        REAL*8     rprop(*)
+        type(PPICLF_U_t_particle), intent(in) :: particles(:)
         !
         ! Internal:
         !
+        INTEGER*4  npart
         INTEGER*4 ntotal,i,j
         !
-
         CALL ppiclf_prints('   *Begin AddParticles$')
-
+        npart = size(particles)
+        
         IF(ppiclf_npart+npart .gt. PPICLF_LPART .or. npart .lt. 0) CALL ppiclf_exittr('Invalid number of particles$',0.0D0,ppiclf_npart+npart)
 
         CALL ppiclf_printsi('      -Begin copy particles$',npart)
 
-        !TODO: test this, im not certain the memory layout is correct for this
-        j = 1
-        DO i=ppiclf_npart + 1, ppiclf_npart + npart
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y")
-            ${particle}$ = y(j:j+${n - 1}$)
-            j = j + ${n}$
-#:endfor
-        END DO
-
-        j = 1
-        DO i=ppiclf_npart + 1, ppiclf_npart + npart
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%rprop")
-            ${particle}$ = rprop(j:j+${n - 1}$)
-            j = j + ${n}$
-#:endfor
-        END DO
+        ppiclf_parts(ppiclf_npart + 1 : ppiclf_npart + 1 + npart) = particles(:)
         
 
         ppiclf_npart = ppiclf_npart + npart
@@ -365,9 +354,9 @@ module ppiclf_solve
         INTEGER*4 i
         !
         DO i=ppiclf_npart-npart+1,ppiclf_npart
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(1) = i
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(2) = ppiclf_nid
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(3) = ppiclf_cycle
+            ppiclf_parts(i)%tag%partNum = i
+            ppiclf_parts(i)%tag%rankNum = ppiclf_nid
+            ppiclf_parts(i)%tag%cycleNum = ppiclf_cycle
         END DO
 
         RETURN
@@ -382,33 +371,35 @@ module ppiclf_solve
         ! declare a temporary ghost particle variable. when we want to do the interaction between 2 real particles
         ! this ghost will be filled with the data from the 2nd real. this allows user_nearest_neighboor to always assume it has been
         ! given 1 real and 1 ghost.
-        @:DECLAREPARTVAR(PPICLF_t_ghostParticle, tempGhost)
         ! 
         ! Internal: 
         ! 
-        REAL*8 ydum(PPICLF_LRS), rpropdum(PPICLF_LRP), xp(3), bin_xMin(3),      &
-            A(3),B(3),C(3),AB(3),AC(3), distSQ, xdistSQ, ydistSQ,             &
+        type(PPICLF_U_t_ghostParticle) tempGhost
+        REAL*8 xp(3), bin_xMin(3),      &
+            A(3),B(3),C(3),AB(3),AC(3), distSQ,            &
             dist_total, rnx, rny, rnz, area, rpx1, rpy1, rpz1, rpx2,          &
             rpy2, rpz2, rflip, a_sum, rd, rdist, theta, tri_area,             &
-            ab_dot_ac, ab_mag, ac_mag, zdistSQ, rthresh
+            ab_dot_ac, ab_mag, ac_mag, rthresh
 
         INTEGER*4 istride, k, kmax, kp, kkp, kk, j, jp, l, iSB, jSB, kSB, loopSB, tempSB, iSBin(3)
         
         distSQ = ppiclf_nndist**2
     
         ! find ith particle subbin (tempSB)
+        xp = ppiclf_parts(i)%y%pos%vec
         DO l = 1,3
-            xp(l) = @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(l)
             bin_xMin(l) = ppiclf_bin_pos(1,l)
         END DO
         DO l = 1,3
             iSBin(l) = FLOOR((xp(l) - (bin_xMin(l) - ppiclf_nndist))/ppiclf_nndist)
         END DO
+
         tempSB = iSBin(1) + iSBin(2)*SBn(1) + iSBin(3)*SBn(1)*SBn(2)
 #ifdef TEST
         PARTICLE_NN(i) = 0 
         PPICLF_TOTNNDIST(i) = 0.0D0
 #endif
+
         ! Loop through real particles
         DO iSB = 1,3     !to look at -1,current,+1 x-dir subbins
             DO jSB = 1,3   !to look at -1,current,+1 x-dir subbins
@@ -420,14 +411,7 @@ module ppiclf_solve
                             j = SBm(loopSB,k)
                             IF (j .GT. 0) THEN ! Real particle
                                 IF (j .EQ. i) CYCLE ! Same particle
-                                xdistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@)-(@{USEPARTICLE(ppiclf_parts(j)%y%pos%x)}@))**2
-                                IF (xdistSQ .GT. distSQ) CYCLE
-                                ydistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@)-(@{USEPARTICLE(ppiclf_parts(j)%y%pos%y)}@))**2
-                                IF (ydistSQ .GT. distSQ) CYCLE
-                                dist_total = xdistSQ + ydistSQ
-                                zdistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@)-(@{USEPARTICLE(ppiclf_parts(j)%y%pos%z)}@))**2
-                                IF (zdistSQ .GT. distSQ) CYCLE
-                                dist_total = dist_total+zdistSQ
+                                dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_parts(j)%y%pos%vec)**2)
                                 IF (dist_total .GT. distSQ) CYCLE
 #ifdef TEST
                                 PARTICLE_NN(i) = PARTICLE_NN(i) + 1
@@ -435,23 +419,14 @@ module ppiclf_solve
                                 CYCLE !Don't want to call EvalNN. Just testing
                                     ! nneighbor search
 #endif
-                                call CopyRealToGhost(@{LISTCOMPONENTS(ppiclf_parts(i))}@, @{LISTCOMPONENTS(tempGhost)}@)
-                                CALL ppiclf_user_EvalNearestNeighbor(i, j, @{LISTCOMPONENTS(tempGhost)}@)
+                                call CopyRealToGhost(ppiclf_parts(i), tempGhost)
+                                CALL ppiclf_user_EvalNearestNeighbor(i, j, tempGhost)
 
                             ELSE IF (j .LT. 0) THEN ! Ghost Particle
                                 ! Negative was just use for ghost particle indicator
                                 ! in subbin mapping array. Need to flip sign
-                                j = - j                 
-                                xdistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@)-(@{USEPARTICLE(ppiclf_gparts(j)%y%pos%x)}@))**2
-                                IF (xdistSQ .GT. distSQ) CYCLE
-                                ydistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@)-(@{USEPARTICLE(ppiclf_gparts(j)%y%pos%y)}@))**2
-                                IF (ydistSQ .GT. distSQ) CYCLE
-                                dist_total = xdistSQ + ydistSQ
-                                IF (ppiclf_ndim .EQ. 3) THEN
-                                zdistSQ = ((@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@)-(@{USEPARTICLE(ppiclf_gparts(j)%y%pos%z)}@))**2
-                                IF (zdistSQ .GT. distSQ) CYCLE
-                                dist_total = dist_total+zdistSQ
-                                END IF
+                                j = - j               
+                                dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_gparts(j)%y%pos%vec)**2)  
                                 IF (dist_total .GT. distSQ) CYCLE
 #ifdef TEST
                                 PARTICLE_NN(i) = PARTICLE_NN(i) + 1
@@ -460,7 +435,7 @@ module ppiclf_solve
                                     ! nneighbor search
 #endif
                                 jp = -1*j
-                                CALL ppiclf_user_EvalNearestNeighbor(i, jp, @{LISTCOMPONENTS(ppiclf_gparts(j))}@)
+                                CALL ppiclf_user_EvalNearestNeighbor(i, jp, ppiclf_gparts(j))
                             END IF
                         END DO !k
                     END IF ! if loopSB is valid
@@ -474,8 +449,8 @@ module ppiclf_solve
             rny  = ppiclf_wall_n(2,j)
             rnz  = 0.0d0
             area = ppiclf_wall_n(3,j)
-            rpx1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ !ppiclf_cp_map(1,i)
-            rpy1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@
+            rpx1 = ppiclf_parts(i)%y%pos%vec(1) !ppiclf_cp_map(1,i)
+            rpy1 = ppiclf_parts(i)%y%pos%vec(2)
             rpz1 = 0.0d0
             rpx2 = ppiclf_wall_c(1,j)
             rpy2 = ppiclf_wall_c(2,j)
@@ -484,7 +459,7 @@ module ppiclf_solve
             rpy2 = rpy2 - rpy1
             rnz  = ppiclf_wall_n(3,j)
             area = ppiclf_wall_n(4,j)
-            rpz1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@
+            rpz1 = ppiclf_parts(i)%y%pos%vec(3)
             rpz2 = ppiclf_wall_c(3,j)
             rpz2 = rpz2 - rpz1
         
@@ -516,15 +491,16 @@ module ppiclf_solve
 
                 rd   = -(rnx*rpx1 + rny*rpy1 + rnz*rpz1)
 
-                rdist = abs(rnx*(@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@)+rny*(@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@)+rnz*(@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@)+rd)
+                rdist = abs(rnx*(ppiclf_parts(i)%y%pos%vec(1))+rny*(ppiclf_parts(i)%y%pos%vec(2))+rnz*(ppiclf_parts(i)%y%pos%vec(3))+rd)
                 rdist = rdist/sqrt(rnx**2 + rny**2 + rnz**2)
 
                 ! give a little extra room for walls (2x)
                 IF(rdist .GT. 2.0d0*ppiclf_nndist) GOTO 1519
 
-                @{USEPARTICLE(tempGhost%y%pos%x)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ - rdist*rnx
-                @{USEPARTICLE(tempGhost%y%pos%y)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ - rdist*rny
-                @{USEPARTICLE(tempGhost%y%pos%z)}@ = 0.0d0
+                ! @{USEPARTICLE(tempGhost%y%pos%x)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ - rdist*rnx
+                ! @{USEPARTICLE(tempGhost%y%pos%y)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ - rdist*rny
+                ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = 0.0d0
+                tempGhost%y%pos = ppiclf_parts(i)%y%pos - (rdist * [rnx, rny, rnz])
 
                 A(1) = ydum(1)
                 A(2) = ydum(2)
@@ -546,7 +522,7 @@ module ppiclf_solve
                 AC(2) = C(2) - A(2)
                 AC(3) = 0.0d0
 
-                @{USEPARTICLE(tempGhost%y%pos%z)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ - rdist*rnz
+                ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ - rdist*rnz
                 A(3) = ydum(3)
                 B(3) = rpz1
                 C(3) = rpz2
@@ -565,7 +541,7 @@ module ppiclf_solve
             IF(a_sum .GT. rthresh*area) CYCLE
 
             jp = 0
-            CALL ppiclf_user_EvalNearestNeighbor(i,jp, @{LISTCOMPONENTS(tempGhost)}@)!       &
+            CALL ppiclf_user_EvalNearestNeighbor(i,jp, tempGhost)!       &
                 ! ,ppiclf_cp_map(1,i)                       &
                 ! ,ppiclf_cp_map(1+PPICLF_LRS,i)            &
                 ! ,ydum                                     &
@@ -683,7 +659,7 @@ module ppiclf_solve
         PPICLF_TTotal = tfinal - tstart
         CALL ppiclf_io_WritePerformance()
 #endif
-      RETURN
+        RETURN
     END SUBROUTINE ppiclf_solve_IntegrateParticle
 
     SUBROUTINE ppiclf_solve_IntegrateRK3s_Rocflu(iout)
@@ -733,7 +709,7 @@ module ppiclf_solve
         !Zero out for first stage
         if (istage .EQ. 1) then
             do i = 1, ppiclf_npart
-                @{USEPARTICLE(ppiclf_parts(i)%y1)}@ = 0.0D0
+                ppiclf_parts(i)%y1 = zeroParticle%y1
             end do
         END IF
 
@@ -744,26 +720,22 @@ module ppiclf_solve
         !   Research Briefs, 1991.
 
         DO i = 1,PPICLF_NPART
-#:for n, y_ref, y_off, ydot_ref, ydot_off, y1_ref, y1_off in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y", "ppiclf_parts(i)%ydot", "ppiclf_parts(i)%y1")
-            DO j = 1, ${n}$
-                ${y_ref}$(j + ${y_off}$) = 0.0d0 - ppiclf_rk3coef(1,istage)*${y1_ref}$(j + ${y1_off}$) + ppiclf_rk3coef(2,istage)*${y_ref}$(j + ${y_off}$) + ppiclf_rk3coef(3,istage)*${ydot_ref}$(j + ${ydot_off}$)
-            enddo
-#:endfor
+            ppiclf_parts(i)%y = - ppiclf_rk3coef(1, istage) * ppiclf_parts(i)%y1(1) &
+                                + ppiclf_rk3coef(2, istage) * ppiclf_parts(i)%y     &
+                                + ppiclf_rk3coef(3, istage) * ppiclf_parts(i)%ydot
         END DO
     
         !Store Current stage RHS for next stage's use
-        !TODO FIX THIS
+        !TODO: if we decide to increase PPICLF_N_PREV_SOLS, this needs to be updated.
         IF(istage .ne. 3) THEN
             DO i= 1,PPICLF_NPART
-#:for n, y1_ref, y1_off, ydot_ref, ydot_off in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y1", "ppiclf_parts(i)%ydot")
-        ${y1_ref}$(${y1_off + 1}$: ${y1_off + n}$)  = ${ydot_ref}$(${ydot_off + 1}$: ${ydot_off + n}$)
-#:endfor
+                ppiclf_parts(i)%y1(1) = ppiclf_parts(i)%ydot 
             END DO
         end if
     
 #ifdef PERF
-      tfinal = MPI_WTIME()
-      PPICLF_TIntegration = PPICLF_TIntegration + (tfinal - tstart)
+        tfinal = MPI_WTIME()
+        PPICLF_TIntegration = PPICLF_TIntegration + (tfinal - tstart)
 #endif
 
         RETURN
@@ -827,15 +799,15 @@ module ppiclf_solve
             DO j= 1,3
                 ! particle leaving min. periodic face -> move it relative to 
                 !                                         max periodic face
-                IF(@{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) .LT. ppiclf_xdrange(1,j)) THEN
-                    @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) = ppiclf_xdrange(2,j) - ABS(ppiclf_xdrange(1,j) - @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j))
+                IF(ppiclf_parts(i)%y%pos%vec(j) .LT. ppiclf_xdrange(1,j)) THEN
+                    ppiclf_parts(i)%y%pos%vec(j) = ppiclf_xdrange(2,j) - ABS(ppiclf_xdrange(1,j) - ppiclf_parts(i)%y%pos%vec(j))
                     CYCLE
                 END IF
 
                 ! particle leaving max. periodic face -> move it relative to 
                 !                                         min periodic face
-                IF(@{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j).GT.ppiclf_xdrange(2,j)) THEN
-                    @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) = ppiclf_xdrange(1,j) + ABS(@{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) - ppiclf_xdrange(2,j))
+                IF(ppiclf_parts(i)%y%pos%vec(j).GT.ppiclf_xdrange(2,j)) THEN
+                    ppiclf_parts(i)%y%pos%vec(j) = ppiclf_xdrange(1,j) + ABS(ppiclf_parts(i)%y%pos%vec(j) - ppiclf_xdrange(2,j))
                 END IF
             END DO ! j
         END IF 
@@ -981,7 +953,7 @@ module ppiclf_solve
             CALL ppiclf_comm_MoveGhost
             ! Zero collisions 
             do j = 1, ppiclf_npart
-                @{USEPARTICLE(ppiclf_parts(j)%ydotc)}@ = 0.0D0
+                ppiclf_parts(j)%ydotc = zeroParticle%ydotc
             end do
         END IF
 
@@ -1009,7 +981,7 @@ module ppiclf_solve
         INTEGER*4 :: i, j
 
 #ifdef PERF
-        REAL *8 tstart,tfinal     
+        REAL *8 tstart,tfinal
 #endif
 !
 
@@ -1072,7 +1044,7 @@ module ppiclf_solve
             CALL ppiclf_comm_MoveGhost
             ! Zero collisions 
             do j = 1, ppiclf_npart
-                @{USEPARTICLE(ppiclf_parts(j)%ydotc)}@ = 0.0D0
+                ppiclf_parts(j)%ydotc = zeroParticle%ydotc
             end do
 
 #ifdef PERF
@@ -1107,7 +1079,7 @@ module ppiclf_solve
         RETURN
     END SUBROUTINE ppiclf_solve_PostTimeStep
 
-    SUBROUTINE ppiclf_solve_InterpFieldUser(jp,infld, nCells)
+    SUBROUTINE ppiclf_solve_InterpFieldUserOLD(jp,infld, nCells)
         !
         ! This is called by rocpicl/PICL_TEMP_Runge.F90 each timestep
         ! There is a call for each quantity that should be interpolated
@@ -1139,6 +1111,27 @@ module ppiclf_solve
         CALL ppiclf_copy(ppiclf_int_fld_input(1,PPICLF_INT_ICNT),infld(1),n)
 
         RETURN
+    END SUBROUTINE ppiclf_solve_InterpFieldUserOLD
+
+    SUBROUTINE ppiclf_solve_InterpFieldUser(infld)
+        !
+        ! This is called by rocpicl/PICL_TEMP_Runge.F90 each timestep
+        !
+        !
+        ! Input: 
+        !
+        type(PPICLF_U_t_interp), intent(in) :: infld(:)
+        !
+        ! Internal:
+        !
+        integer*4 nCells
+
+        nCells = size(infld)
+        if 
+        
+        
+        
+        IF(PPICLF_INTERP .EQ. 0) CALL ppiclf_exittr('No specified interpolated fields, set PPICLF_LRP_INT$',0.0d0,0)
     END SUBROUTINE ppiclf_solve_InterpFieldUser
 
     SUBROUTINE ppiclf_solve_InitInterp
@@ -1365,7 +1358,7 @@ module ppiclf_solve
             ! xp(3) = @{USEPARTICLE(ppiclf_parts(ip)%y%pos%z)}@
 
             ! just do one array operation instead of 3 assignments
-            xp = @{USEPARTICLE(ppiclf_parts(ip)%y%pos)}@
+            xp = ppiclf_parts(ip)%y%pos%vec
             DO l = 1,3
                 i_SBin(l) = FLOOR((xp(l) - bin_Min(l))/ppiclf_interp_dchk(l))
             END DO
@@ -1450,9 +1443,9 @@ module ppiclf_solve
                 ! Particle is outside of fluid domain.
                 ! iprop(8,ip) set to -1 means it will be removed
                 ! from ppiclf_y & ppiclf_rprop, rprop2, rprop3, rprop4, rprop5
-                @{USEPARTICLE(ppiclf_parts(ip)%iprop%RemoveParticle)}@ = -1
+                ppiclf_parts(ip)%iprop%RemoveParticle = -1
                 ppiclf_remove_particle = .TRUE.
-                PRINT*, 'part # on proc # removed with postion of:',@{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(1),ppiclf_nid,xp(1),xp(2),xp(3) 
+                PRINT*, 'part # on proc # removed with postion of:',ppiclf_parts(ip)%tag%partNum, ppiclf_nid, xp(1),xp(2),xp(3) 
             ELSE
                 partCount = partCount + 1
                 ! use partCount since ip includes possible removed particles
@@ -1504,7 +1497,7 @@ module ppiclf_solve
             ! xp(3) = @{USEPARTICLE(ppiclf_parts(ip)%y%pos%z)}@
 
             ! just do one array operation instead of 3 assignments
-            xp = @{USEPARTICLE(ppiclf_parts(ip)%y%pos)}@
+            xp = ppiclf_parts(ip)%y%pos%vec
 
             nnearest = 0 ! number of nearest elements
             DO ie = 1,28
@@ -1559,9 +1552,9 @@ module ppiclf_solve
                 ! Particle is outside of fluid domain.
                 ! iprop(8,ip) set to -1 means it will be removed
                 ! from ppiclf_y & ppiclf_rprop, rprop2, rprop3, rprop4, rprop5
-                @{USEPARTICLE(ppiclf_parts(ip)%iprop%RemoveParticle)}@ = -1
+                ppiclf_parts(ip)%iprop%RemoveParticle = -1
                 ppiclf_remove_particle = .TRUE.
-                PRINT*, 'part # on proc # removed with postion of:',@{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(1),ppiclf_nid,xp(1),xp(2),xp(3) 
+                PRINT*, 'part # on proc # removed with postion of:', ppiclf_parts(ip)%tag%partNum, ppiclf_nid,xp(1),xp(2),xp(3) 
             ELSE
                 partCount = partCount + 1
                 ! use partCount since ip includes possible removed particles
@@ -1584,43 +1577,83 @@ module ppiclf_solve
         RETURN
     END SUBROUTINE ppiclf_solve_ParticleToCellMap
 
-    SUBROUTINE ppiclf_solve_Interpolate
-        ! Local Variables
-        INTEGER*4 i, j, k, ip, nnearest,cellID 
-        REAL*8    wsum, eps, dist, a(27), w(27)  
+    SUBROUTINE ppiclf_solve_InterpolateOLD
+        ! ! Local Variables
+        ! INTEGER*4 i, j, k, ip, nnearest,cellID 
+        ! REAL*8    wsum, eps, dist, a(27), w(27)  
 
-        IF(ppiclf_npart .LT. 1) RETURN
+        ! IF(ppiclf_npart .LT. 1) RETURN
 
-        eps = 1.0D-60 ! Machine epsilon to avoid dividing by zero
-        DO ip = 1,ppiclf_npart
-            nnearest = ppiclf_nPart2Cell(ip)
-            w = 0.0D0
-            wsum = 0.0D0
-            DO k = 1,nnearest
-                ! Interpolation Weighting: 1/(distance^3)
-                dist = ppiclf_Part2Cell_dist(ip,k)**3 + eps
-                w(k) = 1.0d0 / dist
-                wsum = w(k) + wsum
-            END DO ! k
-            DO i = 1,PPICLF_INT_ICNT
-                j = PPICLF_INT_MAP(i)
-                @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) = 0.0D0
-                ! Inverse Distance Interpolation
-                DO k = 1,nnearest
-                    cellID = ppiclf_Part2Cell_map(ip,k) 
-                    a(k) = ppiclf_int_fld(i,cellID)
-                    @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) = @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) + w(k)*a(k)/wsum
-                END DO ! k
-                IF (isnan(@{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j))) THEN
-                    PRINT *, 'INTERP NAN: Particle, processor id, nnearest', ip, ppiclf_nid,nnearest
-                    PRINT*, 'Index:',j, 'Value:',@{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j)
-                    CALL ppiclf_exittr('rprop NaN in Interpolate',0.D0,0)
-                END IF
-            END DO ! i
-        END DO ! ip
+        ! eps = 1.0D-60 ! Machine epsilon to avoid dividing by zero
+        ! DO ip = 1,ppiclf_npart
+        !     nnearest = ppiclf_nPart2Cell(ip)
+        !     w = 0.0D0
+        !     wsum = 0.0D0
+        !     DO k = 1,nnearest
+        !         ! Interpolation Weighting: 1/(distance^3)
+        !         dist = ppiclf_Part2Cell_dist(ip,k)**3 + eps
+        !         w(k) = 1.0d0 / dist
+        !         wsum = w(k) + wsum
+        !     END DO ! k
+        !     DO i = 1,PPICLF_INT_ICNT
+        !         j = PPICLF_INT_MAP(i)
+        !         @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) = 0.0D0
+        !         ! Inverse Distance Interpolation
+        !         DO k = 1,nnearest
+        !             cellID = ppiclf_Part2Cell_map(ip,k) 
+        !             a(k) = ppiclf_int_fld(i,cellID)
+        !             @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) = @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) + w(k)*a(k)/wsum
+        !         END DO ! k
+        !         IF (isnan(@{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j))) THEN
+        !             PRINT *, 'INTERP NAN: Particle, processor id, nnearest', ip, ppiclf_nid,nnearest
+        !             PRINT*, 'Index:',j, 'Value:',@{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j)
+        !             CALL ppiclf_exittr('rprop NaN in Interpolate',0.D0,0)
+        !         END IF
+        !     END DO ! i
+        ! END DO ! ip
 
-        RETURN
-    END SUBROUTINE ppiclf_solve_Interpolate
+        ! RETURN
+    END SUBROUTINE ppiclf_solve_InterpolateOLD
+
+    FUNCTION ppiclf_solve_Interpolate(ip, particle) result(interpResult)
+        integer*4, intent(in)                   :: ip
+        type(PPICLF_U_t_particle), intent(in)   :: particle
+        type(PPICLF_U_t_interp)                 :: interpResult
+
+        !
+        ! Internal:
+        !
+        INTEGER*4 k, nnearest, cellID 
+        type(PPICLF_U_t_interp)   a(27)
+
+        real*8 ::  weights_sum, dist, weights(27)
+        real*8, parameter ::eps = 1.0D-60 ! Machine epsilon to avoid dividing by zero
+
+       
+        nnearest = ppiclf_nPart2Cell(ip)
+        weights = 0.0D0
+        weights_sum = 0.0D0
+        DO k = 1,nnearest
+            ! Interpolation Weighting: 1/(distance^3)
+            dist = ppiclf_Part2Cell_dist(ip,k)**3 + eps
+            weights(k) = 1.0d0 / dist
+            weights_sum = weights(k) + weights_sum
+        END DO ! k
+        call ppiclf_user_ZeroInterp(interpResult)
+        ! Inverse Distance Interpolation
+        DO k = 1,nnearest
+            cellID = ppiclf_Part2Cell_map(ip,k) 
+            a(k) = ppiclf_int_fld(cellID)
+            ! @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) = @{USEPARTICLE(ppiclf_parts(ip)%rprop)}@(j) + w(k)*a(k)/wsum
+            interpResult = interpResult + ((weights(k) * a(k)) / weights_sum)
+        END DO ! k
+        
+        IF (interpHasNAN(interpResult)) THEN
+            PRINT *, 'INTERP NAN: Particle, processor id, nnearest', ip, ppiclf_nid,nnearest
+            PRINT*, interpResult
+            CALL ppiclf_exittr('rprop NaN in Interpolate',0.D0,0)
+        END IF
+    END FUNCTION ppiclf_solve_Interpolate
 
     SUBROUTINE ppiclf_solve_RemoveParticle
         !
@@ -1630,16 +1663,16 @@ module ppiclf_solve
         ! instead of copying every sinle particle after the first removed one, have a second index, j, that starts at npart, and every time i hits
         ! a particle to be removed, overwrite i with j, then decrement j (until j isn't marked for removal as well).
         ! this results in at most as many particle copies as there are particles being removed, as opposed to npart copies
+        ! NOTE: When/if we make this change, we need to be sure to change the ordering of anything else that relies on the particle ordering.
+        ! One I know of is the PPICLF_NPART2CELL, PART2CELL_MAP, and PART2CELL_DIST set of arrays
         INTEGER*4 i, icount
         icount = 0
         DO i=1,ppiclf_npart
-            IF(@{USEPARTICLE(ppiclf_parts(i)%iprop%RemoveParticle)}@ .NE. -1) THEN
+            IF(ppiclf_parts(i)%iprop%RemoveParticle .NE. -1) THEN
                 ! Keep particle - copy the column with particle information
                 icount = icount + 1 
                 IF(i .NE. icount) THEN
-#:for structReference in fyppmacros.ListComponents("ppiclf_parts")
-                    ${structReference}$(icount) = ${structReference}$(i)
-#:endfor
+                    ppiclf_parts(icount) = ppiclf_parts(i)
                 END IF
                 ! Else - don't copy particle column if marked for removal
                 ! Particles marked for removal if outside fluid domain, which
@@ -1653,32 +1686,33 @@ module ppiclf_solve
     END SUBROUTINE ppiclf_solve_RemoveParticle
 
     SUBROUTINE ppiclf_solve_ProjectParticleGrid
-        ! Internal:
-        INTEGER*4 i, j, ip, ie, nCellProj, CellID, nl, nii, njj, nrr, nkey(2), iee
-        REAL*8    CellVol, GaussianConst, dist, w(27), wsum, x_norm, y_norm, z_norm, PI, eps
-        LOGICAL   partl 
+        ! ! Called from ppiclf_solve_InitSolve and ppiclf_solve_PostTimestep
+        ! ! Internal:
+        ! INTEGER*4 i, j, ip, ie, nCellProj, CellID, nl, nii, njj, nrr, nkey(2), iee
+        ! REAL*8    CellVol, GaussianConst, dist, w(27), wsum, x_norm, y_norm, z_norm, PI, eps
+        ! LOGICAL   partl 
 
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
-        PI = 4*ATAN(1.0D0)
-        GaussianConst = 2.305D0 ! Distribution over 2 cell widths
-        ppiclf_pro_fld_picl = 0.0d0
-        eps = 1.0D-60
-        DO ip=1,ppiclf_npart
-            ! Update volume fraction for feedback - important for 1st RK
-            ! step at time = 0.0
-            @{USEPARTICLE(ppiclf_parts(ip)%feedback%P_JPHIP)}@ = @{USEPARTICLE(ppiclf_parts(ip)%rprop%VOLP)}@ * @{USEPARTICLE(ppiclf_parts(ip)%rprop%JSPL)}@
-            nCellProj = ppiclf_nPart2Cell(ip)
-            wsum = 0.0D0
-            ! Loop to find individual cell weightings
-            DO i = 1,nCellProj
-                CellID = ppiclf_Part2Cell_map(ip,i) 
-                dist = ppiclf_Part2Cell_dist(ip,i) + eps
-                CellVol = ppiclf_picl_grid(7,CellID)
-                w(i) = ABS(CellVol*EXP(-GaussianConst*(dist**2) / (CellVol**(2.0D0/3.0D0))))
-                wsum = wsum + w(i)
-            END DO !i
+        ! PI = 4*ATAN(1.0D0)
+        ! GaussianConst = 2.305D0 ! Distribution over 2 cell widths
+        ! ppiclf_pro_fld_picl = 0.0d0
+        ! eps = 1.0D-60
+        ! DO ip=1,ppiclf_npart
+        !     ! Update volume fraction for feedback - important for 1st RK
+        !     ! step at time = 0.0
+        !     @{USEPARTICLE(ppiclf_parts(ip)%feedback%P_JPHIP)}@ = @{USEPARTICLE(ppiclf_parts(ip)%rprop%VOLP)}@ * @{USEPARTICLE(ppiclf_parts(ip)%rprop%JSPL)}@
+        !     nCellProj = ppiclf_nPart2Cell(ip)
+        !     wsum = 0.0D0
+        !     ! Loop to find individual cell weightings
+        !     DO i = 1,nCellProj
+        !         CellID = ppiclf_Part2Cell_map(ip,i) 
+        !         dist = ppiclf_Part2Cell_dist(ip,i) + eps
+        !         CellVol = ppiclf_picl_grid(7,CellID)
+        !         w(i) = ABS(CellVol*EXP(-GaussianConst*(dist**2) / (CellVol**(2.0D0/3.0D0))))
+        !         wsum = wsum + w(i)
+        !     END DO !i
 #ifdef TEST
             ! These are same feedback equations used in unit testing
             x_norm = (ppiclf_y(PPICLF_JX, ip) - ppiclf_binb(1)) / (ppiclf_binb(2) - ppiclf_binb(1))
@@ -1689,65 +1723,65 @@ module ppiclf_solve
             ppiclf_feedbk(2,ip) = SIN(2*PI*x_norm) + SIN(2*PI*y_norm) + SIN(2*PI*z_norm)
 #endif     
 
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%feedback")
-            DO j=1,${n}$
-                ! Loop through cells to apply feedback     
-                DO i = 1,nCellProj
-                    CellID = ppiclf_Part2Cell_map(ip,i)
-                    ppiclf_pro_fld_picl(j,CellID) = ppiclf_pro_fld_picl(j,CellID) + ${particle}$(j)*w(i)/wsum
-                END DO !i
-            END DO !j
-#:endfor
-        END DO !ip
+! #:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%feedback")
+!             DO j=1,${n}$
+!                 ! Loop through cells to apply feedback     
+!                 DO i = 1,nCellProj
+!                     CellID = ppiclf_Part2Cell_map(ip,i)
+!                     ppiclf_pro_fld_picl(j,CellID) = ppiclf_pro_fld_picl(j,CellID) + ${particle}$(j)*w(i)/wsum
+!                 END DO !i
+!             END DO !j
+! #:endfor
+!         END DO !ip
 
-        ! Now send feedback information to processor that contains 
-        ! the cell for the fluid solver
+!         ! Now send feedback information to processor that contains 
+!         ! the cell for the fluid solver
 
-        ppiclf_nCells_Proj = ppiclf_nCells_FV2PICL
-        DO i = 1,ppiclf_nCells_Proj
-            CALL ppiclf_icopy(ppiclf_cell_map_proj(1,i),ppiclf_cell_map_interp(1,i),PPICLF_LRMAX)
-        END DO
+!         ppiclf_nCells_Proj = ppiclf_nCells_FV2PICL
+!         DO i = 1,ppiclf_nCells_Proj
+!             CALL ppiclf_icopy(ppiclf_cell_map_proj(1,i),ppiclf_cell_map_interp(1,i),PPICLF_LRMAX)
+!         END DO
 
-        nl = 0
-        nii = PPICLF_LRMAX
-        njj = 2 ! original processor with cell for fluid grid
-        nrr = PPICLF_LRP_PRO
-        nkey(1) = 2
-        nkey(2) = 1
-
-#ifdef PERF
-      tstart = MPI_WTIME()
-#endif
-
-        CALL pfgslib_crystal_tuple_transfer(      & 
-            ppiclf_cr_hndl                      & ! Setup
-            ,ppiclf_nCells_Proj, PPICLF_LEE     & ! Amount of columns to transfer
-            ,ppiclf_cell_map_proj, nii          & ! Integer communication
-            ,partl, nl                          & ! Logical communication
-            ,ppiclf_pro_fld_picl, nrr           & ! Real communication
-            ,njj)                                 ! Proc index to send to
-
-        CALL pfgslib_crystal_tuple_sort(          & 
-            ppiclf_cr_hndl                      & ! Setup
-            ,ppiclf_nCells_Proj                 & ! Amount of columns to sort
-            ,ppiclf_cell_map_proj,nii           & ! Integer data
-            ,partl,nl                           & ! Logical data
-            ,ppiclf_pro_fld_picl,nrr            & ! Real data
-            ,nkey,2)                              ! Sorting order
+!         nl = 0
+!         nii = PPICLF_LRMAX
+        ! njj = 2 ! original processor with cell for fluid grid
+        ! nrr = PPICLF_LRP_PRO
+        ! nkey(1) = 2
+        ! nkey(2) = 1
 
 #ifdef PERF
-      tfinal = MPI_WTIME()
-      PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
+        tstart = MPI_WTIME()
 #endif
 
-        ppiclf_pro_fld = 0.0d0
-        DO ie=1,ppiclf_nCells_Proj
-            iee = ppiclf_cell_map_Proj(1,ie)
-            DO j=1,PPICLF_LRP_PRO
-                ! Mapped to the fluid solver domain
-                ppiclf_pro_fld(iee,j) = ppiclf_pro_fld(iee,j) + ppiclf_pro_fld_picl(j,ie)
-            END DO
-        END DO
+        ! CALL pfgslib_crystal_tuple_transfer(      & 
+        !     ppiclf_cr_hndl                      & ! Setup
+        !     ,ppiclf_nCells_Proj, PPICLF_LEE     & ! Amount of columns to transfer
+        !     ,ppiclf_cell_map_proj, nii          & ! Integer communication
+        !     ,partl, nl                          & ! Logical communication
+        !     ,ppiclf_pro_fld_picl, nrr           & ! Real communication
+        !     ,njj)                                 ! Proc index to send to
+
+        ! CALL pfgslib_crystal_tuple_sort(          & 
+        !     ppiclf_cr_hndl                      & ! Setup
+        !     ,ppiclf_nCells_Proj                 & ! Amount of columns to sort
+        !     ,ppiclf_cell_map_proj,nii           & ! Integer data
+        !     ,partl,nl                           & ! Logical data
+        !     ,ppiclf_pro_fld_picl,nrr            & ! Real data
+        !     ,nkey,2)                              ! Sorting order
+
+#ifdef PERF
+        tfinal = MPI_WTIME()
+        PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
+#endif
+
+        ! ppiclf_pro_fld = 0.0d0
+        ! DO ie=1,ppiclf_nCells_Proj
+        !     iee = ppiclf_cell_map_Proj(1,ie)
+        !     DO j=1,PPICLF_LRP_PRO
+        !         ! Mapped to the fluid solver domain
+        !         ppiclf_pro_fld(iee,j) = ppiclf_pro_fld(iee,j) + ppiclf_pro_fld_picl(j,ie)
+        !     END DO
+        ! END DO
 
         RETURN
     END SUBROUTINE ppiclf_solve_ProjectParticleGrid

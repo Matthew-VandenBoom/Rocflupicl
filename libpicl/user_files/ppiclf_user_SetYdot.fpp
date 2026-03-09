@@ -230,7 +230,7 @@ module procedure ppiclf_user_SetYdot
     ! Reapply axi-sym collision correction
     ! Right now hard coding smallest radius  
     do i=1,ppiclf_npart
-       @{USEPARTICLE(ppiclf_parts(i)%rprop%JDPe)}@ = (0.00005/(@{USEPARTICLE(ppiclf_parts(i)%rprop%JSPT)}@)) * (@{USEPARTICLE(ppiclf_parts(i)%rprop%DP)}@) 
+       ppiclf_parts(i)%rprop%JDPe = (0.00005/(ppiclf_parts(i)%rprop%JSPT)) * (ppiclf_parts(i)%rprop%DP)
     end do 
     !
     !-----------------------------------------------------------------------
@@ -294,7 +294,7 @@ module procedure ppiclf_user_SetYdot
             rmu = rmu_ref
         elseif (rmu_flag==rmu_suth_param) then
             ! Sutherland law
-            temp    = @{USEPARTICLE(ppiclf_parts(i)%rprop%JT)}@
+            temp    = ppiclf_parts(i)%rprop%JT
             rmu     = rmu_ref*sqrt(temp/tref)*(1.0d0+suth/tref)/(1.0d0+suth/temp)
         else
             call ppiclf_exittr('Unknown viscosity law$', 0.0d0, 0)
@@ -303,19 +303,19 @@ module procedure ppiclf_user_SetYdot
 
 
         ! Useful values
-        rmass  = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%RHOP)}@
-        vx     = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%X)}@ - @{USEPARTICLE(ppiclf_parts(i)%y%vel%x)}@
-        vy     = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Y)}@ - @{USEPARTICLE(ppiclf_parts(i)%y%vel%y)}@
-        vz     = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Z)}@ - @{USEPARTICLE(ppiclf_parts(i)%y%vel%z)}@
+        rmass  = ppiclf_parts(i)%rprop%VOLP * ppiclf_parts(i)%rprop%RHOP
+        vx     = ppiclf_parts(i)%rprop%U%X - ppiclf_parts(i)%y%vel%x
+        vy     = ppiclf_parts(i)%rprop%U%Y - ppiclf_parts(i)%y%vel%y
+        vz     = ppiclf_parts(i)%rprop%U%Z - ppiclf_parts(i)%y%vel%z
         vmag   = sqrt(vx*vx + vy*vy + vz*vz)
-        rhof   = @{USEPARTICLE(ppiclf_parts(i)%rprop%RHOF)}@  
-        dp     = @{USEPARTICLE(ppiclf_parts(i)%rprop%DP)}@
+        rhof   = ppiclf_parts(i)%rprop%RHOF  
+        dp     = ppiclf_parts(i)%rprop%DP
         rep    = vmag*dp*rhof/rmu
-        rphip  = @{USEPARTICLE(ppiclf_parts(i)%rprop%PHIP)}@
-        rphif  = 1.0d0-(@{USEPARTICLE(ppiclf_parts(i)%rprop%PHIP)}@)
-        asndf  = @{USEPARTICLE(ppiclf_parts(i)%rprop%CS)}@
+        rphip  = ppiclf_parts(i)%rprop%PHIP
+        rphif  = 1.0d0-(ppiclf_parts(i)%rprop%PHIP)
+        asndf  = ppiclf_parts(i)%rprop%CS
         rmachp = vmag/asndf
-        rhop   = @{USEPARTICLE(ppiclf_parts(i)%rprop%RHOP)}@
+        rhop   = ppiclf_parts(i)%rprop%RHOP
 
         ! TLJ - 04/03/2025; Do not calculate forces if vmag = 0
         !       Otherwise the particles might move before the 
@@ -336,7 +336,7 @@ module procedure ppiclf_user_SetYdot
         !   velocity magnitude for plotting purposes - 01/03/2025
 
         ! ***This is bad practice and leads to difficult code to debug -Avery***
-        @{USEPARTICLE(ppiclf_parts(i)%rprop%JSPT)}@ = sqrt((@{USEPARTICLE(ppiclf_parts(i)%y%vel%x)}@)**2 + (@{USEPARTICLE(ppiclf_parts(i)%y%vel%y)}@)**2 + (@{USEPARTICLE(ppiclf_parts(i)%y%vel%z)}@)**2)
+        ppiclf_parts(i)%rprop%JSPT = sqrt((ppiclf_parts(i)%y%vel%x)**2 + (ppiclf_parts(i)%y%vel%y)**2 + (ppiclf_parts(i)%y%vel%z)**2)
 
         rep = max(0.1d0,rep)
 

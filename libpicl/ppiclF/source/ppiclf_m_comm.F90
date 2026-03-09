@@ -1,10 +1,9 @@
 #include "PPICLF_STD.h"
-#:include 'PPICLF_PARTMACROS.fypp'
 module ppiclf_m_comm
     use mpi
     ! particle data
     use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@, @{USEMODVAR(PPICLF_t_ghostParticle, ppiclf_gparts)}@
+    use ppiclf_m_particledata, only: ppiclf_parts, ppiclf_gparts
     ! grid data
     use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_ncells_fv2picl_orig, ppiclf_nfvcells, ppiclf_xdrange, ppiclf_fluid_grid, ppiclf_cell_map, ppiclf_picl_grid, ppiclf_cell_map_Orig
     ! particle options variables
@@ -20,15 +19,22 @@ module ppiclf_m_comm
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
     ! use ppiclf_data, only:
 
+    ! MPI Type handles from ppiclf_m_types:
+    use ppiclf_m_types
     ! used functions/subroutines
     use ppiclf_op, only: ppiclf_iglsum, ppiclf_glmin, ppiclf_glmax, ppiclf_glsum, ppiclf_iglmax, ppiclf_vlmin, ppiclf_vlmax, ppiclf_exittr, ppiclf_copy, ppiclf_prints, ppiclf_icopy
     use ppiclf_io, only: ppiclf_io_outputdiaggrid
+    use ppiclf_m_particledata, only: CopyRealToGhost
+    use ppiclf_user_particle, only: ppiclf_user_Create_MPI_Derivedtypes, ppiclf_user_Destroy_MPI_Derivedtypes
+    use ppiclf_m_particle_ops, only: ppiclf_particles_GroupBy, ppiclf_particles_GroupByIntoArray, GroupByKeys
     ! user functions
     ! use ppiclf_user, only:
+    use ppiclf_user_particle, only: PPICLF_U_t_particle, PPICLF_U_t_ghostParticle
     implicit none
     private
 
     public :: ppiclf_comm_InitMPI
+    public :: ppiclf_comm_FinalizeMPI
     public :: ppiclf_comm_InitCrystal
     public :: ppiclf_comm_InitOverlapGrid
     public :: ppiclf_comm_CreateBin
@@ -39,12 +45,14 @@ module ppiclf_m_comm
     public :: ppiclf_comm_GhostDistCheck
     public :: ppiclf_comm_LinearPeriodicityGhost
     public :: ppiclf_comm_MoveGhost
+    public :: ppiclf_comm_CreateBinPartLB
+    public :: ppiclf_comm_FindParticlePartLB
 
-    real*8 rprop_transfer(${fyppmacros.CountReals("PPICLF_t_ghostParticle")}$, PPICLF_LPART_GP)
-    integer*4 iprop_transfer(8, PPICLF_LPART_GP)
 
     ! mapping of (local particle index, rank to send to)
-    INTEGER*4 PPICLF_GP_MAP(0:8, PPICLF_LPART_GP)
+    ! INTEGER*4 PPICLF_GP_MAP(0:8, PPICLF_LPART_GP)
+
+    integer, public, save :: user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH
 
 
     contains
@@ -76,6 +84,9 @@ module ppiclf_m_comm
             CALL ppiclf_comm_InitCrystal
         CALL ppiclf_prints('    End InitCrystal$')
 
+        call ppiclf_m_types_Create_MPI_Derivedtypes
+        call ppiclf_user_Create_MPI_Derivedtypes(user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH, PPICLF_t_realNVec_MPIH, PPICLF_t_tag_MPIH)
+
         ! check to make sure subroutine is called in correct order later
         ! on in the code sequence
         PPICLF_LCOMM = .TRUE.
@@ -83,9 +94,19 @@ module ppiclf_m_comm
         RETURN
     END SUBROUTINE ppiclf_comm_InitMPI
 
+    SUBROUTINE ppiclf_comm_FinalizeMPI
+        !
+        !     This subroutine is called from nowhere, I really need to find a place for it
+        !
+        call ppiclf_user_Destroy_MPI_Derivedtypes
+        call ppiclf_m_types_Destroy_MPI_Derivedtypes
+
+        RETURN
+    END SUBROUTINE ppiclf_comm_FinalizeMPI
+
     SUBROUTINE ppiclf_comm_InitCrystal
         !
-        !     This subroutine is called form ppiclf_comm_InitMPI
+        !     This subroutine is called from ppiclf_comm_InitMPI
         !
         !
         ! Code:
@@ -156,9 +177,9 @@ module ppiclf_m_comm
             maxbincount1, maxbincount2, BinCheck, minbin(3),            &
             binNegBound, binPosBound, binIterations
        
-        REAL*8    xmin, ymin, zmin, xmax, ymax, zmax, temp1, temp2,     &
+        REAL*8    xmin, ymin, zmin, xmax, ymax, zmax, tempLower(3), tempUpper(3),     &
             BinMinLen(3), periodicDistCheck, BinBuffer(3), binsReal(3), &
-            binError, minBinError,  increaseRatio
+            binError, minBinError,  increaseRatio, mins(3), maxes(3)
 
         LOGICAL   MaxBinsAchieved(3), TwoSmallBins
         !
@@ -183,12 +204,8 @@ module ppiclf_m_comm
             MaxBinsAchieved(i) = .FALSE.
         END DO
 
-        xmin =  1D10
-        ymin =  1D10
-        zmin =  1D10
-        xmax = -1D10
-        ymax = -1D10
-        zmax = -1D10
+        mins = huge(1.0d0)
+        maxes = tiny(1.0d0)
 
         ! Looping through particles on this processor
         ! to find bin boundary locations
@@ -196,21 +213,20 @@ module ppiclf_m_comm
             ! Finding min/max particle extremes.
             ! Add buffer so that layers of outer cells 
             ! are available for interpolation/projection.
-            temp1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ - BinBuffer(ix)
-            temp2 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ + BinBuffer(ix)
-            IF(temp1 .LT. xmin) xmin = temp1
-            IF(temp2 .GT. xmax) xmax = temp2
-
-            temp1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ - BinBuffer(iy)
-            temp2 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ + BinBuffer(iy)
-            IF(temp1 .LT. ymin) ymin = temp1
-            IF(temp2 .GT. ymax) ymax = temp2
-
-            temp1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ - BinBuffer(iz)
-            temp2 = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ + BinBuffer(iz)
-            IF(temp1 .LT. zmin) zmin = temp1
-            IF(temp2 .GT. zmax) zmax = temp2
+            tempLower = ppiclf_parts(i)%y%pos%vec - BinBuffer
+            tempUpper = ppiclf_parts(i)%y%pos%vec + BinBuffer
+            mins = min(mins, tempLower)
+            maxes = max(maxes, tempUpper)
         END DO
+        xmin = mins(1)
+        ymin = mins(2)
+        zmin = mins(3)
+
+        xmax = maxes(1)
+        ymax = maxes(2)
+        zmax = maxes(3)
+
+
 
         ! Finds global bin domain boundaries across MPI ranks
         ppiclf_binb(1) = ppiclf_glmin([xmin],1)
@@ -474,6 +490,7 @@ module ppiclf_m_comm
             PRINT*, 'correct bin combination not found'
         END IF
 
+        NBMax = -1 ! initialize to clear maybe-uninitialized warning
         tempi = 0
         total_bin = 1      
         DO i = 1,3
@@ -539,33 +556,38 @@ module ppiclf_m_comm
 
     SUBROUTINE ppiclf_comm_FindParticle
         !
-        ! This subroutine is called from ppiclf_solve_InitSolve
+        ! This subroutine is called from ppiclf_solve_InitSolve and ppiclf_solve_PostTimeStep
         !
       
         !
         ! Internal:
         !
-        INTEGER*4  i, ii, jj, kk, nrank, ierr, partcheck
-
+        INTEGER*4  i, BinIndexes(3), ii, jj, kk, nrank, ierr, partcheck
+        real*8 binb_lower(3)
         !
+        binb_lower = [ppiclf_binb(1), ppiclf_binb(3), ppiclf_binb(5)]
         partcheck = 0
         DO i=1,ppiclf_npart
             ! Calculates particle's bin index
-            ii  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@-ppiclf_binb(1))/ppiclf_bins_dx(1))
-            jj  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@-ppiclf_binb(3))/ppiclf_bins_dx(2)) 
-            kk  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@-ppiclf_binb(5))/ppiclf_bins_dx(3)) 
+            ! ii  = FLOOR((ppiclf_parts(i)%y%pos%x-ppiclf_binb(1))/ppiclf_bins_dx(1))
+            ! jj  = FLOOR((ppiclf_parts(i)%y%pos%y-ppiclf_binb(3))/ppiclf_bins_dx(2)) 
+            ! kk  = FLOOR((ppiclf_parts(i)%y%pos%z-ppiclf_binb(5))/ppiclf_bins_dx(3)) 
+            BinIndexes = FLOOR((ppiclf_parts(i)%y%pos%vec - binb_lower) / ppiclf_bins_dx)
         
             ! Calculates particle's bin
-            nrank  = ii + ppiclf_n_bins(1)*jj + ppiclf_n_bins(1)*ppiclf_n_bins(2)*kk
-            IF(nrank .NE. @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(4)) partcheck = 1
+            ! nrank  = ii + ppiclf_n_bins(1)*jj + ppiclf_n_bins(1)*ppiclf_n_bins(2)*kk
+            nrank  = BinIndexes(1) + ppiclf_n_bins(1)*BinIndexes(2) + ppiclf_n_bins(1)*ppiclf_n_bins(2)*BinIndexes(3)
+
+            ! set partcheck flag if this particle has moved
+            IF(nrank .NE. ppiclf_parts(i)%iprop%ParticleRank) partcheck = 1
 
             ! Maps particle to correct processor based on active bin number
             ! ***Use BinToProcMap for active/inactive bin***
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(4) = nrank ! Processor to send to
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(5) = ii    ! x bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(6) = jj    ! y bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(7) = kk    ! z bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(8) = nrank ! total bin number
+            ppiclf_parts(i)%iprop%ParticleRank = nrank       ! Processor to send to
+            ppiclf_parts(i)%iprop%xBin    = BinIndexes(1)    ! x bin #
+            ppiclf_parts(i)%iprop%yBin    = BinIndexes(2)    ! y bin #
+            ppiclf_parts(i)%iprop%zBin    = BinIndexes(3)    ! z bin #
+            ppiclf_parts(i)%iprop%binNum  = nrank            ! total bin number
         END DO
         ppiclf_particleMoved = ppiclf_iglmax([partcheck],1)
         CALL mpi_barrier(ppiclf_comm,ierr)
@@ -575,131 +597,47 @@ module ppiclf_m_comm
 
     SUBROUTINE ppiclf_comm_MoveParticle
         !
-        ! This subroutine is called from ppiclf_solve_InitSolve
+        ! This subroutine is called from ppiclf_solve_InitSolve and ppiclf_solve_PostTimeStep
         !
-      
+        
         !
         ! Internal:
         !
-        LOGICAL   partl ! dummy variable    
-        INTEGER*4 rtempLim, itempLim
-        PARAMETER(rtempLim = PPICLF_LRS*4 + PPICLF_LRP + PPICLF_LRP2 + PPICLF_LRP3 + PPICLF_LRP4 + PPICLF_LRP5 + PPICLF_LRP_PRO)
-        PARAMETER(itempLim = PPICLF_LIP)
-        REAL*8    rtemp(rtempLim,PPICLF_LPART)
-        INTEGER*4 i, icount, j0, itemp(itempLim, PPICLF_LPART)
-
+        integer ierr, i
+        integer sendcounts(ppiclf_np), recvcounts(ppiclf_np), senddisp(ppiclf_np), recvdisp(ppiclf_np)
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
+        type(PPICLF_U_t_particle), allocatable :: tempParticles(:)
 
-        !
-        ! copy particle y, rprop, rprop2, rprop3 arrays into rtemp
-        ! array for communication
-        ! DO i=1,ppiclf_npart
-        !     icount = 1
-        !     CALL ppiclf_copy(rtemp(icount,i),ppiclf_y(1,i),PPICLF_LRS)
-        !     icount = icount + PPICLF_LRS
-        !     CALL ppiclf_copy(rtemp(icount,i),ppiclf_y1(1,i),PPICLF_LRS)
-        !     icount = icount + PPICLF_LRS
-        !     CALL ppiclf_copy(rtemp(icount,i),ppiclf_ydot(1,i),PPICLF_LRS)
-        !     icount = icount + PPICLF_LRS
-        !     CALL ppiclf_copy(rtemp(icount,i),ppiclf_ydotc(1,i),PPICLF_LRS)
-        !     icount = icount + PPICLF_LRS
-        !     CALL ppiclf_copy(rtemp(icount,i),ppiclf_rprop(1,i),PPICLF_LRP)
-        !     icount = icount + PPICLF_LRP
-        !     IF(PPICLF_LRP2 .GT. 1) THEN
-        !         CALL ppiclf_copy(rtemp(icount,i), ppiclf_rprop2(1,i),PPICLF_LRP2)
-        !         icount = icount + PPICLF_LRP2
-        !     END IF
-        !     IF(PPICLF_LRP3 .GT. 1) THEN
-        !         CALL ppiclf_copy(rtemp(icount,i), ppiclf_rprop3(1,i),PPICLF_LRP3)
-        !         icount = icount + PPICLF_LRP3
-        !     END IF
-        !     IF(PPICLF_LRP4 .GT. 1) THEN
-        !         CALL ppiclf_copy(rtemp(icount,i), ppiclf_rprop4(1,i),PPICLF_LRP4)
-        !         icount = icount + PPICLF_LRP4
-        !     END IF
-        !     IF(PPICLF_LRP5 .GT. 1) THEN
-        !         CALL ppiclf_copy(rtemp(icount,i), ppiclf_rprop5(1,i),PPICLF_LRP5)
-        !         icount = icount + PPICLF_LRP5
-        !     END IF
-        !     CALL ppiclf_copy(rtemp(icount,i), ppiclf_feedbk(1,i),PPICLF_LRP_PRO)
-        ! END DO
-      
-        DO i=1, ppiclf_npart
-            icount = 1
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)")
-            CALL ppiclf_copy(rtemp(icount, i), ${particle}$(1), ${n}$)
-            icount = icount + ${n}$
-#:endfor
-            itemp(:,i) = @{USEPARTICLE(ppiclf_parts(i)%iprop)}@
-        END DO
-        j0 = 4 ! index of ppiclf_iprop that contains rank to send to
+        allocate(tempParticles(ppiclf_npart))
+        call ppiclf_particles_GroupByIntoArray(ppiclf_parts, tempParticles, [GroupByKeys%RankNum], ierr)
 
+        sendcounts = 0
+        senddisp = 0
+        recvcounts = 0 ! initialize to clear maybe-uninitialized warning
+        do i = 1, ppiclf_npart
+            if (sendcounts(tempParticles(i)%iprop%ParticleRank) .eq. 0) then
+                senddisp(tempParticles(i)%iprop%ParticleRank) = i
+            end if
+            sendcounts(tempParticles(i)%iprop%ParticleRank) = sendcounts(tempParticles(i)%iprop%ParticleRank) + 1
+        end do
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
-        CALL pfgslib_crystal_tuple_transfer(ppiclf_cr_hndl  & 
-            ,ppiclf_npart,PPICLF_LPART                      & ! Setup
-            ,itemp,PPICLF_LIP                               & ! Integer Comm
-            ,partl,0                                        & ! Logical Comm
-            ,rtemp,rtempLim                                 & ! Real Comm
-            ,j0)                                              ! Receiver processor index
-
-
+        call MPI_AllToAllv(tempParticles, sendcounts, senddisp, user_particle_MPIH, ppiclf_parts, recvcounts, recvdisp, user_particle_MPIH, PPICLF_COMM, ierr)
 
 #ifdef PERF
         tfinal = MPI_WTIME()
         PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
 #endif
 
-        IF(ppiclf_npart .GT. PPICLF_LPART .OR. ppiclf_npart .LT. 0) THEN
-            PRINT*,'Increase LPART. Processor:',ppiclf_nid, 'LPART should be greater than:',ppiclf_npart
-            CALL ppiclf_exittr('Increase LPART$',0.0d0,ppiclf_npart)
-        END IF
- 
-        ! Update processor particle values with newly transfered rtemp
-        ! array from communication
-        DO i=1,ppiclf_npart
-            icount = 1
-            ! CALL ppiclf_copy(ppiclf_y(1,i),rtemp(icount,i),PPICLF_LRS)
-            ! icount = icount + PPICLF_LRS
-            ! CALL ppiclf_copy(ppiclf_y1(1,i),rtemp(icount,i),PPICLF_LRS)
-            ! icount = icount + PPICLF_LRS
-            ! CALL ppiclf_copy(ppiclf_ydot(1,i),rtemp(icount,i),PPICLF_LRS)
-            ! icount = icount + PPICLF_LRS
-            ! CALL ppiclf_copy(ppiclf_ydotc(1,i),rtemp(icount,i),PPICLF_LRS)
-            ! icount = icount + PPICLF_LRS
-            ! CALL ppiclf_copy(ppiclf_rprop(1,i),rtemp(icount,i),PPICLF_LRP)
-            ! icount = icount + PPICLF_LRP
-            ! IF(PPICLF_LRP2 .GT. 1) THEN
-            !     CALL ppiclf_copy(ppiclf_rprop2(1,i),rtemp(icount,i),PPICLF_LRP2)
-            !     icount = icount + PPICLF_LRP2
-            ! END IF
-            ! IF(PPICLF_LRP3 .GT. 1) THEN
-            !     CALL ppiclf_copy(ppiclf_rprop3(1,i),rtemp(icount,i), PPICLF_LRP3)
-            !     icount = icount + PPICLF_LRP3
-            ! END IF
-            ! IF(PPICLF_LRP4 .GT. 1) THEN
-            !     CALL ppiclf_copy(ppiclf_rprop4(1,i),rtemp(icount,i), PPICLF_LRP4)
-            !     icount = icount + PPICLF_LRP4
-            ! END IF
-            ! IF(PPICLF_LRP5 .GT. 1) THEN
-            !     CALL ppiclf_copy(ppiclf_rprop5(1,i),rtemp(icount,i), PPICLF_LRP5)
-            !     icount = icount + PPICLF_LRP5
-            ! END IF
-            ! CALL ppiclf_copy(ppiclf_feedbk(1,i),rtemp(icount,i), PPICLF_LRP_PRO)
+        ppiclf_npart = sum(recvcounts)
+        deallocate(tempParticles)
 
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)")
-            CALL ppiclf_copy(${particle}$(1), rtemp(icount, i), ${n}$)
-            icount = icount + ${n}$
-#:endfor
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@ = itemp(:,i)
-        END DO
-        
-        RETURN
-    END SUBROUTINE ppiclf_comm_MoveParticle
-
+        return
+    end subroutine ppiclf_comm_MoveParticle
+    
     SUBROUTINE ppiclf_comm_MapOverlapGrid
         !
         ! This subroutine is called from ppiclf_solve_InitSolve
@@ -975,9 +913,9 @@ module ppiclf_m_comm
             !             END DO
 
             ! GP Bin Index
-            iip    = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(5)
-            jjp    = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(6)
-            kkp    = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(7)
+            iip    = ppiclf_parts(ip)%iprop%xBin
+            jjp    = ppiclf_parts(ip)%iprop%yBin
+            kkp    = ppiclf_parts(ip)%iprop%zBin
    
             ! Found that buffer was needed in unit testing 
             ! due to round-off errors with periodicity
@@ -986,7 +924,7 @@ module ppiclf_m_comm
 
             DO ix = 1,3
                 distSQ = 0.0D0
-                GhostPos(1) = @{USEPARTICLE(ppiclf_parts(ip)%y%pos%x)}@ ! ppiclf_cp_map(1,ip)
+                GhostPos(1) = ppiclf_parts(ip)%y%pos%vec(1) ! ppiclf_cp_map(1,ip)
                 IF(ix .LT. 3) THEN
                     CALL ppiclf_comm_GhostDistCheck(ix,GhostPos(1), ppiclf_nndist*buffer,GhostInc(1),1,distSQ(1))
                     IF(GhostInc(1) .EQ. 0) CYCLE
@@ -1008,7 +946,7 @@ module ppiclf_m_comm
                 END IF
 
                 DO iy = 1,3
-                    GhostPos(2) = @{USEPARTICLE(ppiclf_parts(ip)%y%pos%y)}@ ! ppiclf_cp_map(2,ip)
+                    GhostPos(2) =ppiclf_parts(ip)%y%pos%vec(2) ! ppiclf_cp_map(2,ip)
                     IF(iy .LT. 3) THEN
                         CALL ppiclf_comm_GhostDistCheck(iy,GhostPos(2), ppiclf_nndist*buffer,GhostInc(2),2,distSQ(2))
                         IF(GhostInc(2) .EQ. 0.) CYCLE
@@ -1033,7 +971,7 @@ module ppiclf_m_comm
                     END IF
 
                     DO iz = 1,3
-                        GhostPos(3) = @{USEPARTICLE(ppiclf_parts(ip)%y%pos%z)}@ ! ppiclf_cp_map(3,ip)
+                        GhostPos(3) = ppiclf_parts(ip)%y%pos%vec(3) ! ppiclf_cp_map(3,ip)
                         IF(iz .LT. 3) THEN
                             CALL ppiclf_comm_GhostDistCheck(iz,GhostPos(3), ppiclf_nndist*buffer,GhostInc(3),3,distSQ(3))
                             IF(GhostInc(3) .EQ. 0) CYCLE
@@ -1065,16 +1003,13 @@ module ppiclf_m_comm
                         nrank = iig + ppiclf_n_bins(1)*jjg + ppiclf_n_bins(1)*ppiclf_n_bins(2)*kkg
                         ! !ghostsMade = ghostsMade + 1
                         ppiclf_npart_gp = ppiclf_npart_gp + 1
-                        PPICLF_GP_MAP(0, ppiclf_npart_gp) = ip ! local particle index
-                        ! ! Copy particle ID info
-                        PPICLF_GP_MAP(1,ppiclf_npart_gp) = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(1)
-                        PPICLF_GP_MAP(2,ppiclf_npart_gp) = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(2)
-                        PPICLF_GP_MAP(3,ppiclf_npart_gp) = @{USEPARTICLE(ppiclf_parts(ip)%iprop)}@(3)
-                        PPICLF_GP_MAP(4,ppiclf_npart_gp) = nrank !*** change to processor
-                        PPICLF_GP_MAP(5,ppiclf_npart_gp) = iig
-                        PPICLF_GP_MAP(6,ppiclf_npart_gp) = jjg
-                        PPICLF_GP_MAP(7,ppiclf_npart_gp) = kkg
-                        PPICLF_GP_MAP(8,ppiclf_npart_gp) = nrank
+                        call CopyRealToGhost(ppiclf_parts(ip), ppiclf_gparts(ppiclf_npart_gp))
+                        
+                        ppiclf_gparts(ppiclf_npart_gp)%iprop%ParticleRank = nrank
+                        ppiclf_gparts(ppiclf_npart_gp)%iprop%xBin = iig
+                        ppiclf_gparts(ppiclf_npart_gp)%iprop%yBin = jjg
+                        ppiclf_gparts(ppiclf_npart_gp)%iprop%zBin = kkg
+                        ppiclf_gparts(ppiclf_npart_gp)%iprop%binNum = nrank
 
                         ! ppiclf_rprop_gp(1,ppiclf_npart_gp) = GhostPos(1)
                         ! ppiclf_rprop_gp(2,ppiclf_npart_gp) = GhostPos(2)
@@ -1130,93 +1065,95 @@ module ppiclf_m_comm
     END SUBROUTINE ppiclf_comm_LinearPeriodicityGhost
 
     SUBROUTINE ppiclf_comm_MoveGhost
-        !
-        ! Internal:
-        !
-        LOGICAL partl
-        integer*4, parameter :: iprop_proc_index = 4
-        integer*4, parameter :: LRP_GP = ${fyppmacros.CountReals("PPICLF_t_ghostParticle")}$
-        integer*4 i, i_rprop
+        integer ierr, i
+        integer sendcounts(ppiclf_np), recvcounts(ppiclf_np), senddisp(ppiclf_np), recvdisp(ppiclf_np)
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
+        type(PPICLF_U_t_ghostParticle), allocatable :: tempGhosts(:)
 
+        allocate(tempGhosts(ppiclf_npart_gp))
+        call ppiclf_ghostParticles_GroupByIntoArray(ppiclf_gparts, tempGhosts, [GroupByKeys%RankNum], ierr)
+
+        recvcounts = 0 ! initialize to clear maybe-uninitialized warning
+        sendcounts = 0
+        senddisp = 0
+        do i = 1, ppiclf_npart_gp
+            if (sendcounts(tempGhosts(i)%iprop%ParticleRank) .eq. 0) then
+                senddisp(tempGhosts(i)%iprop%ParticleRank) = i
+            end if
+            sendcounts(tempGhosts(i)%iprop%ParticleRank) = sendcounts(tempGhosts(i)%iprop%ParticleRank) + 1
+        end do
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
-        !
-        ! pack the particle data we need into the transfer arrays
-        !
-        do i=1, ppiclf_npart_gp
-            i_rprop = 1
-#:for overlapProp, n in fyppmacros.Loop_All_Real_Overlaps("ppiclf_parts(PPICLF_GP_MAP(0,i))", "PPICLF_t_ghostParticle")   
-            rprop_transfer(i_rprop:i_rprop + ${n - 1}$, PPICLF_GP_MAP(0,i)) = ${overlapProp}$
-            i_rprop = i_rprop + ${n}$
-#:endfor
-            iprop_transfer(:, i) =  PPICLF_GP_MAP(1:8,i)
-        end do
-
-        ! transfer ghost data
-        CALL pfgslib_crystal_tuple_transfer(    & 
-            ppiclf_cr_hndl                      & 
-            ,ppiclf_npart_gp,PPICLF_LPART_GP    & ! Setup
-            ,iprop_transfer, 8                  & ! Integer Comm
-            ,partl,0                            & ! Logical Comm
-            ,rprop_transfer,LRP_GP              & ! Real Comm
-            ,iprop_proc_index)                    ! Receiver processor index
-        !
-        ! unpack ghost data into ghost particle section of the particle array
-        !
-        do i=1, ppiclf_npart_gp
-            i_rprop = 1
-#:for overlapProp, n in fyppmacros.Loop_All_Real_Overlaps("ppiclf_gparts(i)", "PPICLF_t_particle")   
-            ${overlapProp}$ = rprop_transfer(i_rprop:i_rprop + ${n - 1}$, i)
-            i_rprop = i_rprop + ${n}$
-#:endfor
-            ! ppiclf_parts(0-i)%iprop(1:8) = iprop_transfer(:, i)
-            @{USEPARTICLE(ppiclf_gparts(i)%iprop)}@(1:8) = iprop_transfer(:, i)
-        end do
+        call MPI_AllToAllv(tempGhosts, sendcounts, senddisp, user_ghost_MPIH, ppiclf_gparts, recvcounts, recvdisp, user_ghost_MPIH, PPICLF_COMM, ierr)
 
 #ifdef PERF
         tfinal = MPI_WTIME()
         PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
 #endif
+        ppiclf_npart_gp = sum(recvcounts)
+        deallocate(tempGhosts)
 
+        return
     END SUBROUTINE ppiclf_comm_MoveGhost
+!     SUBROUTINE ppiclf_comm_MoveGhostOLD
+!         !
+!         ! Internal:
+!         !
+!         LOGICAL partl
+!         integer*4, parameter :: iprop_proc_index = 4
+!         integer*4, parameter :: LRP_GP = ${fyppmacros.CountReals("PPICLF_t_ghostParticle")}$
+!         integer*4 i, i_rprop
+! #ifdef PERF
+!         REAL*8    tstart, tfinal
+! #endif
 
-    SUBROUTINE ppiclf_comm_MoveGhostOLD
-        !
-        ! Internal:
-        !
-        INTEGER*4 iprop_proc_index
-        LOGICAL   partl  ! Dummy variable       
+! #ifdef PERF
+!         tstart = MPI_WTIME()
+! #endif
+!         !
+!         ! pack the particle data we need into the transfer arrays
+!         !
+!         do i=1, ppiclf_npart_gp
+!             i_rprop = 1
+! #:for overlapProp, n in fyppmacros.Loop_All_Real_Overlaps("ppiclf_parts(PPICLF_GP_MAP(0,i))", "PPICLF_t_ghostParticle")   
+!             rprop_transfer(i_rprop:i_rprop + ${n - 1}$, PPICLF_GP_MAP(0,i)) = ${overlapProp}$
+!             i_rprop = i_rprop + ${n}$
+! #:endfor
+!             iprop_transfer(:, i) =  PPICLF_GP_MAP(1:8,i)
+!         end do
 
-#ifdef PERF
-        REAL*8    tstart, tfinal
-#endif
+!         ! transfer ghost data
+!         CALL pfgslib_crystal_tuple_transfer(    & 
+!             ppiclf_cr_hndl                      & 
+!             ,ppiclf_npart_gp,PPICLF_LPART_GP    & ! Setup
+!             ,iprop_transfer, 8                  & ! Integer Comm
+!             ,partl,0                            & ! Logical Comm
+!             ,rprop_transfer,LRP_GP              & ! Real Comm
+!             ,iprop_proc_index)                    ! Receiver processor index
+!         !
+!         ! unpack ghost data into ghost particle section of the particle array
+!         !
+!         do i=1, ppiclf_npart_gp
+!             i_rprop = 1
+! #:for overlapProp, n in fyppmacros.Loop_All_Real_Overlaps("ppiclf_gparts(i)", "PPICLF_t_particle")   
+!             ${overlapProp}$ = rprop_transfer(i_rprop:i_rprop + ${n - 1}$, i)
+!             i_rprop = i_rprop + ${n}$
+! #:endfor
+!             ! ppiclf_parts(0-i)%iprop(1:8) = iprop_transfer(:, i)
+!             @{USEPARTICLE(ppiclf_gparts(i)%iprop)}@(1:8) = iprop_transfer(:, i)
+!         end do
 
-        !
-        iprop_proc_index = 4 ! since ppiclf_iprop(4,np) contains processor
-                             ! that should receive ghost particle
+! #ifdef PERF
+!         tfinal = MPI_WTIME()
+!         PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
+! #endif
 
-#ifdef PERF
-      tstart = MPI_WTIME()
-#endif
+!     END SUBROUTINE ppiclf_comm_MoveGhostOLD
 
-        ! CALL pfgslib_crystal_tuple_transfer(ppiclf_cr_hndl  & 
-        !     ,ppiclf_npart_gp,PPICLF_LPART_GP                & ! Setup
-        !     ,ppiclf_iprop_gp,PPICLF_LIP_GP                  & ! Integer Comm
-        !     ,partl,0                                        & ! Logical Comm
-        !     ,ppiclf_rprop_gp,PPICLF_LRP_GP                  & ! Real Comm
-        !     ,iprop_proc_index)                                ! Receiver processor index
 
-#ifdef PERF
-        tfinal = MPI_WTIME()
-        PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
-#endif
-
-        RETURN
-    END SUBROUTINE ppiclf_comm_MoveGhostOLD
 
     !-----------------------------------------------------------------------
     ! The following subroutines are for the new particle-based load balance
@@ -1254,8 +1191,8 @@ module ppiclf_m_comm
                 ! Finding min/max particle extremes.
                 ! Add buffer so that layers of outer cells 
                 ! are available for interpolation/projection.
-                temp1 = @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) - BinBuffer(j)
-                temp2 = @{USEPARTICLE(ppiclf_parts(i)%y%pos, skipIndex)}@(j) + BinBuffer(j)
+                temp1 = ppiclf_parts(i)%y%pos%vec(j) - BinBuffer(j)
+                temp2 = ppiclf_parts(i)%y%pos%vec(j) + BinBuffer(j)
                 IF(temp1 .LT. local_extremes(2*j-1)) local_extremes(2*j-1) = temp1
                 IF(temp2 .GT. local_extremes(2*j))   local_extremes(2*j) = temp2
             END DO
@@ -1306,27 +1243,29 @@ module ppiclf_m_comm
 
     SUBROUTINE ppiclf_comm_FindParticlePartLB
 
-        INTEGER*4  i, ii, jj, kk, nbin, ierr, partcheck, NumBins,ParticleCount(0:ppiclf_totalBins-1),BinToRankMapping(0:ppiclf_totalBins-1)
-
-        DO i = 0,(ppiclf_totalBins - 1)
-            ParticleCount(i) = 0
-        END DO
-
+        INTEGER*4  i, BinIndexes(3), nbin, ierr, partcheck, NumBins,ParticleCount(0:ppiclf_totalBins-1),BinToRankMapping(0:ppiclf_totalBins-1)
+        real*8 binb_lower(3)
+        ! DO i = 0,(ppiclf_totalBins - 1)
+        !     ParticleCount(i) = 0
+        ! END DO
+        ParticleCount = 0
+        binb_lower = [ppiclf_binb(1), ppiclf_binb(3), ppiclf_binb(5)]
         DO i=1,ppiclf_npart
             ! Calculates particle's bin index
-            ii  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@-ppiclf_binb(1))/ppiclf_bins_dx(1))
-            jj  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@-ppiclf_binb(3))/ppiclf_bins_dx(2)) 
-            kk  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@-ppiclf_binb(5))/ppiclf_bins_dx(3)) 
+            ! ii  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@-ppiclf_binb(1))/ppiclf_bins_dx(1))
+            ! jj  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@-ppiclf_binb(3))/ppiclf_bins_dx(2)) 
+            ! kk  = FLOOR((@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@-ppiclf_binb(5))/ppiclf_bins_dx(3)) 
+            BinIndexes = FLOOR((ppiclf_parts(i)%y%pos%vec - binb_lower) / ppiclf_bins_dx)
         
             ! Calculates particle's bin
-            nbin = ii + ppiclf_n_bins(1)*jj + ppiclf_n_bins(1)*ppiclf_n_bins(2)*kk
+            nbin =BinIndexes(1) + ppiclf_n_bins(1)*BinIndexes(2) + ppiclf_n_bins(1)*ppiclf_n_bins(2)*BinIndexes(3)
 
             ! Maps particle to correct processor based on active bin number
             !ppiclf_iprop(4,i) = nrank ! Processor to send to
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(5) = ii    ! x bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(6) = jj    ! y bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(7) = kk    ! z bin #
-            @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(8) = nbin ! total bin number
+            ppiclf_parts(i)%iprop%xBin    = BinIndexes(1)    ! x bin #
+            ppiclf_parts(i)%iprop%yBin    = BinIndexes(2)    ! y bin #
+            ppiclf_parts(i)%iprop%zBin    = BinIndexes(3)    ! z bin #
+            ppiclf_parts(i)%iprop%binNum  = nbin             ! total bin number
             ParticleCount(nbin) = ParticleCount(nbin) + 1
         END DO
 
@@ -1358,6 +1297,18 @@ module ppiclf_m_comm
         dS = MINLOC(ppiclf_BinDomLen, DIM=1)
         dM = 6 - dL - dS
 
+        if ((dL .gt. 3) .or. (dL .lt. 1)) then
+            PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
+            RETURN
+        endif
+        if ((dS .gt. 3) .or. (dS .lt. 1)) then
+            PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
+            RETURN
+        endif
+        if ((dM .gt. 3) .or. (dM .lt. 1)) then
+            PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
+            RETURN
+        endif
         nb1 = ppiclf_n_bins(1)
         nb2 = ppiclf_n_bins(2)
         nb3 = ppiclf_n_bins(3)
@@ -1376,6 +1327,13 @@ module ppiclf_m_comm
             ppiclf_bin_pos(2,dM) = ppiclf_binb(2*dM-1)  
             ppiclf_bin_pos(1,dS) = ppiclf_binb(2*dS-1)   
         END IF
+
+        ! initialize to clear maybe-uninitialized warning
+        ! these are all guaranteed to be set in the code below, but the compiler doesnt know that
+        ii = 0
+        jj = 0
+        kk = 0
+
         ! Iterate through loops of largest dimension.
         ! Increment loops by one and loop through all other dimensions.
         DO iloop = 0,(ppiclf_n_bins(dL) - 1)
@@ -1383,33 +1341,24 @@ module ppiclf_m_comm
                 ii = iloop
             ELSEIF(dL .EQ. 2) THEN
                 jj = iloop
-            ELSEIF(dL .EQ. 3) THEN
+            ELSE !IF(dL .EQ. 3) THEN
                 kk = iloop
-            ELSE
-                PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
-                RETURN
             END IF
             DO jloop = 0,(ppiclf_n_bins(dM) - 1)
                 IF(dM .EQ. 1) THEN
                     ii = jloop
                 ELSEIF(dM .EQ. 2) THEN
                     jj = jloop
-                ELSEIF(dM .EQ. 3) THEN
+                ELSE ! IF(dM .EQ. 3) THEN
                     kk = jloop
-                ELSE
-                    PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
-                    RETURN
                 END IF
                 DO kloop = 0,(ppiclf_n_bins(dS) - 1)
                     IF(dS .EQ. 1) THEN
                         ii = kloop
                     ELSEIF(dS .EQ. 2) THEN
                         jj = kloop
-                    ELSEIF(dS .EQ. 3) THEN
+                    ELSE ! IF(dS .EQ. 3) THEN
                         kk = kloop
-                    ELSE
-                        PRINT*, 'ERROR in ppiclf_comm_partLoadBalance'
-                        RETURN
                     END IF
                     bin  = ii + nb1*jj + nb1*nb2*kk
                     particleSum = particleSum + PC(bin)

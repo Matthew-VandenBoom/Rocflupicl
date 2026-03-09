@@ -1,11 +1,10 @@
 #include "PPICLF_STD.h"
-#:include 'PPICLF_PARTMACROS.fypp'
 module ppiclf_initsolve
 
     ! particle data
     use ppiclf_data, only: ppiclf_npart
 
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_m_particledata, only: ppiclf_parts
     ! grid data
     use ppiclf_data, only: ppiclf_int_fld
     ! particle options variables
@@ -23,7 +22,7 @@ module ppiclf_initsolve
     ! used functions/subroutines
     use ppiclf_op, only: ppiclf_exittr
 
-    use ppiclf_user, only: ppiclf_user_InitZero
+    use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_ZeroParticle
 
     implicit none
     private
@@ -41,24 +40,14 @@ module ppiclf_initsolve
         !
         ! zero'ing real particle properties
         DO i=1, PPICLF_LPART
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)")
-            DO j=1, ${n}$
-                ${particle}$(j) = 0.0
-            END DO
-#:endfor
-#:for particle, n in fyppmacros.Loop_All_Ints("ppiclf_parts(i)")
-            DO j=1, ${n}$
-                ${particle}$(j) = 0.0
-            END DO
-#:endfor
+            call ppiclf_user_ZeroParticle(ppiclf_parts(i))
         END DO
 
         ppiclf_npart = 0
         ! zero'ing grid properties for interpolation
         DO ie=1,PPICLF_LEE
-            DO j=1,PPICLF_LRP_INT
-                ppiclf_int_fld(j,ie) = 0.0D0
-            END DO
+            call ppiclf_user_ZeroInterp(ppiclf_int_fld(ie))
+            ! ppiclf_int_fld(ie) = 0.0D0
         END DO
 
         CALL ppiclf_user_InitZero
@@ -106,7 +95,7 @@ module ppiclf_initsolve
             A(1) = (xp1(1) + xp2(1) + xp3(1))/3.0d0
             A(2) = (xp1(2) + xp2(2) + xp3(2))/3.0d0
             A(3) = (xp1(3) + xp2(3) + xp3(3))/3.0d0
-        elseif (ppiclf_ndim .EQ. 2) then
+        else !if (ppiclf_ndim .EQ. 2) then
             ppiclf_wall_c(1,ppiclf_nwall) = xp1(1)
             ppiclf_wall_c(2,ppiclf_nwall) = xp1(2)
             ppiclf_wall_c(3,ppiclf_nwall) = xp2(1)
@@ -160,7 +149,7 @@ module ppiclf_initsolve
                 AC_MAG = sqrt(AC(1)**2 + AC(2)**2 + AC(3)**2)
                 theta  = acos(AB_DOT_AC/(AB_MAG*AC_MAG))
                 tri_area = 0.5d0*AB_MAG*AC_MAG*sin(theta)
-            elseif (ppiclf_ndim .EQ. 2) then
+            else !if (ppiclf_ndim .EQ. 2) then
                 AB_MAG = sqrt(AB(1)**2 + AB(2)**2)
                 tri_area = AB_MAG
             ENDif

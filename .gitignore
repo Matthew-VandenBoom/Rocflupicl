@@ -37,6 +37,7 @@ libpicl/ppiclF/3rd_party/gslib/*
 !libpicl/ppiclF/3rd_party/gslib/install
 libpicl/ppiclF/build/*
 
+test/*
 
 ## ppiclf unit test output
 libpicl/unit_tests/*.txt

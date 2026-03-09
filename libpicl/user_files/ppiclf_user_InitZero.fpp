@@ -26,5 +26,11 @@ submodule (ppiclf_user) ppiclf_user_InitZero_imp
         return
     end procedure ppiclf_user_InitZero
     
+    module procedure ppiclf_user_ZeroParticle
+#ifdef PPICLF_VU
+        particle%DRUDTPLAG(:) = 0
+        particle%DRUDTMIXT(:) = 0
+#endif
+    end procedure ppiclf_user_ZeroParticle
 end submodule ppiclf_user_InitZero_imp
 

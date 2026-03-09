@@ -1,10 +1,10 @@
 #include "PPICLF_STD.h"
-#:include 'PPICLF_PARTMACROS.fypp'
+
 module ppiclf_io
     use mpi
     ! particle data
     use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_m_particledata, only: ppiclf_parts
     ! grid data
     use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_nfvcells, PPICLF_NCELLS_FV2PICL_ORIG
     ! particle options variables
@@ -20,7 +20,8 @@ module ppiclf_io
     ! Performance tracking variables
     use ppiclf_data, only: PPICLF_TCreateBin, PPICLF_TSendParticles, PPICLF_TSendGridOverlap, PPICLF_TSendFluidFields, PPICLF_TParticleParticleModels, PPICLF_TFluidParticleModels, PPICLF_TSendGhostParticles, PPICLF_TMapParticlesCells, PPICLF_TInterpolation, PPICLF_TProjection, PPICLF_TWriteSolution, PPICLF_TIntegration, PPICLF_TPeriodicity, PPICLF_TDataTransfers, PPICLF_TTotal 
     
-
+    ! used types
+    use ppiclf_m_types, only : PPICLF_t_tag, PPICLF_t_realNVec
     ! used functions/subroutines
     use ppiclf_op, only: ppiclf_bcast, ppiclf_iglmin, ppiclf_iglmax, ppiclf_iglsum, ppiclf_indx1, ppiclf_chstr, fixed_str_len, ppiclf_prints, ppiclf_printsi, ppiclf_printsr, ppiclf_byte_open_mpi, ppiclf_byte_set_view, ppiclf_byte_write_mpi, ppiclf_byte_close_mpi, ppiclf_exittr, ppiclf_byte_read_mpi
     use ppiclf_initsolve, only: ppiclf_solve_InitWall, ppiclf_solve_InitZero
@@ -28,6 +29,7 @@ module ppiclf_io
     private
 
     ! public statements go here
+    public :: ppiclf_io_InitParticleVTU
     public :: ppiclf_io_ReadParticleVTU
     public :: ppiclf_io_ReadWallVTK
     public :: ppiclf_io_WriteBinVTU
@@ -37,7 +39,51 @@ module ppiclf_io
     public :: ppiclf_io_OutputDiagGen
     public :: ppiclf_io_OutputDiagGrid
     public :: ppiclf_io_OutputDiagGhost
+
+#define VTU_INCLUDE(name, prop, size) + size &
+    integer*4, parameter :: rout_size_per_part = (0 &
+#include <PPICLF_USER_PART_VTU_MAP.h>
+    )
+#undef VTU_INCLUDE
+
+#define VTU_INCLUDE(name, prop, size) + 1 &
+    integer*4, parameter :: ParticleVTU_NumDataArrays = (0 &
+#include <PPICLF_USER_PART_VTU_MAP.h>
+    )
+#undef VTU_INCLUDE
+
+    ! information about each of the properties we are writing a data array for
+    ! (:, 1) - the number of floats this property includes (per particle)
+    ! (:, 2) - the offset of this data array. This is changed every time writeparticlevtu is called
+    ! (0, :) - reserved for the special position array component of the vtu, its components are always (3, 0)
+    integer*4, save :: ParticleVTU_DataArrays(0:ParticleVTU_NumDataArrays, 2) 
+
+    interface ParticleVTUInit
+        module procedure ParticleVTUInit_real, ParticleVTUInit_int, ParticleVTUInit_tag, ParticleVTUInit_realNVec
+    end interface
+    interface ParticleVTUReadProp
+        module procedure ParticleVTUReadProp_real, ParticleVTUReadProp_int, ParticleVTUReadProp_tag, ParticleVTUReadProp_realNVec
+    end interface
+    
+    ! interface ParticleVTUWriteArrayHeader
+    !     module procedure ParticleVTUWriteArrayHeader_real, ParticleVTUWriteArrayHeader_int, ParticleVTUWriteArrayHeader_tag, ParticleVTUWriteArrayHeader_realNVec
+    ! end interface
+
+    interface ParticleVTUWriteProp
+        module procedure ParticleVTUWriteProp_real, ParticleVTUWriteProp_int, ParticleVTUWriteProp_tag, ParticleVTUWriteProp_realNVec
+    end interface
+
     contains
+
+    SUBROUTINE ppiclf_io_InitParticleVTU
+        integer*4 i
+        i = 1
+#define VTU_INCLUDE(name, prop, size) call ParticleVTUInit(i, ppiclf_parts(1)%prop, ParticleVTU_DataArrays)
+#include <PPICLF_USER_PART_VTU_MAP.h>
+#undef VTU_INCLUDE
+        ParticleVTU_DataArrays(0, :) = [3, 0]
+    END SUBROUTINE ppiclf_io_InitParticleVTU
+
 
     ! had PPICLC
     SUBROUTINE ppiclf_io_ReadParticleVTU(filein1, istartoutin, npart, dp_max)
@@ -48,7 +94,10 @@ module ppiclf_io
         !
         ! Internal:
         !
+#define PPICLF_LRP 1
+#define PPICLF_LRS 1
         real*4  rout_pos(3      *PPICLF_LPART),rout_sln(PPICLF_LRS*PPICLF_LPART),rout_lrp(PPICLF_LRP*PPICLF_LPART),rout_lip(3      *PPICLF_LPART)
+
         real*8 dp_max
         character*1 dum_read
         character(len=fixed_str_len) filein2
@@ -170,50 +219,53 @@ module ppiclf_io
         ic_lrp = 0
         ic_lip = 0
         do i=1,npart
-            ic_pos = ic_pos + 1
-            @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ = rout_pos(ic_pos)
-            ic_pos = ic_pos + 1
-            @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ = rout_pos(ic_pos)
-            ic_pos = ic_pos + 1
-            if (ppiclf_ndim .eq. 3) then
-                @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ = rout_pos(ic_pos)
-            endif
+            ! ic_pos = ic_pos + 1
+            ! ppiclf_parts(i)%y%pos%x = rout_pos(ic_pos)
+            ! ic_pos = ic_pos + 1
+            ! ppiclf_parts(i)%y%pos%y = rout_pos(ic_pos)
+            ! ic_pos = ic_pos + 1
+            ! if (ppiclf_ndim .eq. 3) then
+            !     ppiclf_parts(i)%y%pos%z = rout_pos(ic_pos)
+            ! endif
+            ppiclf_parts(i)%y%pos%vec = rout_pos(ic_pos + 1:ic_pos + ppiclf_ndim)
+            ic_pos = ic_pos + ppiclf_ndim
         enddo
-        ! this being from 1 to PPICLF_LRS, which seems wrong, because that would mean it was just overwriting the position data that was set in the previous line
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y")
-        do j=1,${n}$
-            do i=1,npart
-                ic_sln = ic_sln + 1
-                ${particle}$(j) = rout_sln(ic_sln)
-            enddo
+
+!#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y")
+#define VTU_INCLUDE(name, prop, size) call ParticleVTUReadProp()
+        do i=1,npart
+!#include <PPICLF_USER_PART_VTU_MAP.h>
         enddo
-#:endfor
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%rprop")
-        do j=1,${n}$
-            do i=1,npart
-                ic_lrp = ic_lrp + 1
-                ${particle}$(j) = rout_lrp(ic_lrp)
-            enddo
-            !*** need to add ppiclf_rprop2 ppiclf_rprop3, rprop4, & prop5
-        enddo
-#:endfor
+#undef VTU_INCLUDE
+!#:endfor
+!#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%rprop")
+        ! do j=1,${n}$
+        !     do i=1,npart
+        !         ic_lrp = ic_lrp + 1
+        !         ${particle}$(j) = rout_lrp(ic_lrp)
+        !     enddo
+        !     !*** need to add ppiclf_rprop2 ppiclf_rprop3, rprop4, & prop5
+        ! enddo
+!#:endfor
         ! This reads the particle tag infomation.
         do j=1,3
             do i=1,npart
                 ic_lip = ic_lip + 1
-                @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(j) = int(rout_lip(ic_lip))
+                ! @{USEPARTICLE(ppiclf_parts(i)%iprop)}@(j) = int(rout_lip(ic_lip))
                 ! ppiclf_parts(i)%iprop(j) = int(rout_lip(ic_lip))
             enddo
         enddo
 
         ppiclf_npart = npart
 
-        dp_max = MAXVAL(@{USEPARTICLE(ppiclf_parts(:)%rprop%dp)}@)
+        ! dp_max = MAXVAL(@{USEPARTICLE(ppiclf_parts(:)%rprop%dp)}@)
         ! dp_max = MAXVAL({USEPARTICLE(0:, JDP)}@)
         !dp_max = MAXVAL(ppiclf_rprop(PPICLF_R_JDP,:))
         call ppiclf_printsi('  End ReadParticleVTU$',npt_total)
 
         return
+#undef PPICLF_LRS
+#undef PPICLF_LRP
     END SUBROUTINE ppiclf_io_ReadParticleVTU
 
     ! had PPICLC
@@ -823,7 +875,7 @@ module ppiclf_io
         !
         ! Internal:
         !
-        real*4  rout_pos(3      *PPICLF_LPART) ,rout_sln(PPICLF_LRS*PPICLF_LPART) ,rout_lrp(PPICLF_LRP*PPICLF_LPART) ,rout_lip(3      *PPICLF_LPART)
+        real*4  rout(3      *PPICLF_LPART)
         character*3 filein
         character*12 vtufile
         character*6  prostr
@@ -832,7 +884,7 @@ module ppiclf_io
         data      icalld1 /0/
         integer*4 vtu,pth,prevs(2,ppiclf_np)
         integer*8 idisp_pos,idisp_sln,idisp_lrp,idisp_lip,stride_len
-        integer*4 iint, nnp, nxx, npt_total, jx, jy, jz, if_sz, isize,iadd, if_pos, if_sln, if_lrp, if_lip, ic_pos, ic_sln,ic_lrp, ic_lip, i, j, ie, nps, nglob, nkey, ndum,icount_pos, icount_sln, icount_lrp, icount_lip, iorank,ierr, ivtu_size
+        integer*4 data_offset, nnp, nxx, npt_total, jx, jy, jz, if_sz, isize,iadd, i_rout, if_pos, if_sln, if_lrp, if_lip, ic_pos, ic_sln,ic_lrp, ic_lip, i, j, ie, nps, nglob, nkey, ndum, icount, iorank,ierr, ivtu_size
 
         integer*4 istartout
         common /ppiclf_io_restart/ istartout
@@ -844,10 +896,10 @@ module ppiclf_io
 
         icalld1 = icalld1+1
 
-        nnp   = ppiclf_np
-        nxx   = PPICLF_NPART
+        nnp   = ppiclf_np ! total number of MPI ranks
+        nxx   = PPICLF_NPART    ! number of particles on this rank
 
-        npt_total = ppiclf_iglsum([nxx],1)
+        npt_total = ppiclf_iglsum([nxx],1) ! total number of particles across all ranks
 
         jx    = 1
         jy    = 2
@@ -877,44 +929,7 @@ module ppiclf_io
         ic_sln = iadd
         ic_lrp = iadd
         ic_lip = iadd
-        do i=1,nxx
 
-            ic_pos = ic_pos + 1
-            rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@)
-            ic_pos = ic_pos + 1
-            rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@)
-            ic_pos = ic_pos + 1
-            if (ppiclf_ndim .eq. 3) then
-                rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@)
-            else
-                rout_pos(ic_pos) = 0.0
-            endif
-        enddo
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y")
-        do j=1,${n}$
-            do i=1,nxx
-                ic_sln = ic_sln + 1
-                rout_sln(ic_sln) = sngl(${particle}$(j))
-            enddo
-        enddo
-#:endfor
-#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%rprop")
-        do j=1,${n}$
-            do i=1,nxx
-                ic_lrp = ic_lrp + 1
-                rout_lrp(ic_lrp) = sngl(${particle}$(j))
-            enddo
-        enddo
-#:endfor
-
-!TODO: This isn't clear, so im just making it work for now, but it needs to be fixed at some point
-        do j=1,3
-            do i=1,nxx
-                ! This prints out the particle tag info
-                ic_lip = ic_lip + 1
-                rout_lip(ic_lip) = real(@{USEPARTICLE(ppiclf_parts(i)%iprop)}@(j))
-            enddo
-        enddo
 
         ! --------------------------------------------------
         ! FIRST GET HOW MANY PARTICLES WERE BEFORE THIS RANK
@@ -931,6 +946,9 @@ module ppiclf_io
         call pfgslib_crystal_ituple_transfer(ppiclf_cr_hndl,prevs, ndum,nnp,nnp,nps)
         call pfgslib_crystal_ituple_sort(ppiclf_cr_hndl,prevs, ndum,nnp,nglob,nkey)
 
+        ! The above is a slightly convoluted way of getting prevs to contain the tuple (rankid, # of particles on rank: rankid) for every rank, sorted by the rankid
+        ! this allows the loop below to compute the number of particles on ranks before this one
+        ! this could be sped up by not sorting the list, and just looping over the entire thing, and only summing ranks below this one
         stride_len = 0
         if (ppiclf_nid .ne. 0) then
             do i=1,ppiclf_nid
@@ -988,10 +1006,10 @@ module ppiclf_io
             ! -----------
             ! COORDINATES 
             ! -----------
-            iint = 0
+            data_offset = 0
             write(vtu,'(A)',advance='yes') '   <Points>'
-            call ppiclf_io_WriteDataArrayVTU(vtu,"Position",3,iint)
-            iint = iint + 3*isize*npt_total + isize
+            call ppiclf_io_WriteDataArrayVTU(vtu,"Position",3,data_offset)
+            data_offset = data_offset + 3*isize*npt_total + isize
             write(vtu,'(A)',advance='yes') '   </Points>'
 
             ! ----
@@ -1000,24 +1018,15 @@ module ppiclf_io
             write(vtu,'(A)',advance='yes') '   <PointData>'
 
 
-            do ie=1,PPICLF_LRS
-                write(prostr,'(A1,I2.2)') "y",ie
-                call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
-                iint = iint + 1*isize*npt_total + isize
-            enddo
-
-            do ie=1,PPICLF_LRP
-                write(prostr,'(A4,I2.2)') "rprop",ie
-                call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
-                iint = iint + 1*isize*npt_total + isize
-            enddo
-
-            do ie=1,3
-                write(prostr,'(A3,I2.2)') "tag",ie
-                call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
-                iint = iint + 1*isize*npt_total + isize
-            enddo
-
+            ! write the headers for all of the data arrays. Also stores the offsets for each array into ParticleVTU_DataArrays(:, 2)
+            i = 1 ! used to store the offset in the correct place
+#define VTU_INCLUDE(name, prop, size) RE_NEWLINE\
+            call ppiclf_io_WriteDataArrayVTU(vtu, name, size, data_offset) RE_NEWLINE\
+            ParticleVTU_DataArrays(i, 2) = data_offset RE_NEWLINE\
+            data_offset = data_offset + ParticleVTU_DataArrays(i, 1) * isize * npt_total + isize RE_NEWLINE\
+            i = i + ParticleVTU_DataArrays(i, 1)
+#include <PPICLF_USER_PART_VTU_MAP.h>
+#undef VTU_INCLUDE
             write(vtu,'(A)',advance='yes') '   </PointData> '
 
             ! ----------
@@ -1054,96 +1063,63 @@ module ppiclf_io
         endif
 
         call ppiclf_bcast(ivtu_size, isize)
+        iorank = -1
+        
+        
+        j = 0
+        ! writes the length of the data array to the vtu file. Required by the vtu format when using raw encoding in the appended data
+        ! See here for details:
+        ! https://web.archive.org/web/20220129101641/https://www.paraview.org/pipermail/paraview/2007-October/006064.html
+        ! archive of https://www.paraview.org/pipermail/paraview/2007-October/006064.html
+        call ParticleVTUAppendArrayLen(vtu, vtufile, ParticleVTU_DataArrays(j, 1) * npt_total * isize)
 
         ! byte-displacements
-        idisp_pos = ivtu_size + isize*(3*stride_len + 1)
+        icount = ParticleVTU_DataArrays(j, 1) * ppiclf_npart
+        ! idisp_pos = (vtu header size, up to and including the _ that marks the start of appended data) 
+        !           + (offset into the appended data section of this)
+        !           + (offset within the array for this ranks particles (=prop_size_per_part*npart_prev_rank + 1. the + 1 accounts for the 32 bit int at the start of the array for its length.))
+        idisp_pos = ivtu_size + ParticleVTU_DataArrays(j, 2) + isize*(ParticleVTU_DataArrays(j, 1)*stride_len + 1)
 
-        ! how much to write
-        icount_pos = 3*nxx
-        icount_sln = 1*nxx
-        icount_lrp = 1*nxx
-        icount_lip = 1*nxx
-
-        iorank = -1
-
-        ! integer write
-        if (ppiclf_nid .eq. 0) then
-            open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
-            write(vtu) if_pos
-            close(vtu)
-        endif
-
+        ! load the data into rout
+        i_rout = 1
+        do i = 1, ppiclf_npart
+            rout(i_rout : i_rout + 2) = ppiclf_parts(i)%y%pos%vec
+            i_rout = i_rout + 3
+        end do
+        
+        ! wait for all ranks to be ready to write
         call mpi_barrier(ppiclf_comm,ierr)
 
         ! write
         call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
         call ppiclf_byte_set_view(idisp_pos,pth)
-        call ppiclf_byte_write_mpi(rout_pos,icount_pos,iorank,pth,ierr)
+        call ppiclf_byte_write_mpi(rout,icount,iorank,pth,ierr)
         call ppiclf_byte_close_mpi(pth,ierr)
 
+        ! wait until all ranks have finished writing
         call mpi_barrier(ppiclf_comm,ierr)
 
-        do i=1,PPICLF_LRS
-            idisp_sln = ivtu_size + isize*(3*npt_total + (i-1)*npt_total+ (1)*stride_len+ 1 + i)
 
-            ! integer write
-            if (ppiclf_nid .eq. 0) then
-                open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
-                write(vtu) if_sln
-                close(vtu)
-            endif
-   
-            call mpi_barrier(ppiclf_comm,ierr)
+#define VTU_INCLUDE(name, prop, size)   \
+        j = j+1 RE_NEWLINE\
+        icount = ParticleVTU_DataArrays(j, 1) * ppiclf_npart RE_NEWLINE\
+        idisp_pos = ivtu_size + ParticleVTU_DataArrays(j, 2) + isize*(ParticleVTU_DataArrays(j, 1)*stride_len + 1) RE_NEWLINE\
+        i_rout = 1 RE_NEWLINE\
+        do i = 1, ppiclf_npart RE_NEWLINE\
+            rout(i_rout : i_rout + size - 1) = ParticleVTUWriteProp(ppiclf_parts(i)%prop) RE_NEWLINE\
+            i_rout = i_rout + size RE_NEWLINE\
+        end do RE_NEWLINE\
+        call mpi_barrier(ppiclf_comm,ierr) RE_NEWLINE\
+        call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr) RE_NEWLINE\
+        call ppiclf_byte_set_view(idisp_pos,pth) RE_NEWLINE\
+        call ppiclf_byte_write_mpi(rout,icount,iorank,pth,ierr) RE_NEWLINE\
+        call ppiclf_byte_close_mpi(pth,ierr) RE_NEWLINE\
+        call mpi_barrier(ppiclf_comm,ierr) RE_NEWLINE\
+        RE_NEWLINE\
 
-            j = (i-1)*ppiclf_npart + 1
-    
-            ! write
-            call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
-            call ppiclf_byte_set_view(idisp_sln,pth)
-            call ppiclf_byte_write_mpi(rout_sln(j),icount_sln,iorank,pth,ierr)
-            call ppiclf_byte_close_mpi(pth,ierr)
-        enddo
+#include <PPICLF_USER_PART_VTU_MAP.h>
 
-        do i=1,PPICLF_LRP
-            idisp_lrp = ivtu_size + isize*(3*npt_total  + PPICLF_LRS*npt_total+ (i-1)*npt_total+ (1)*stride_len+ 1 + PPICLF_LRS + i)
-
-            ! integer write
-            if (ppiclf_nid .eq. 0) then
-                open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
-                write(vtu) if_lrp
-                close(vtu)
-            endif
-   
-            call mpi_barrier(ppiclf_comm,ierr)
-
-            j = (i-1)*ppiclf_npart + 1
-   
-            ! write
-            call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
-            call ppiclf_byte_set_view(idisp_lrp,pth)
-            call ppiclf_byte_write_mpi(rout_lrp(j),icount_lrp,iorank,pth,ierr)
-            call ppiclf_byte_close_mpi(pth,ierr)
-        enddo
-
-        do i=1,3
-            idisp_lip = ivtu_size + isize*(3*npt_total+ PPICLF_LRS*npt_total+ PPICLF_LRP*npt_total+ (i-1)*npt_total+ (1)*stride_len+ 1 + PPICLF_LRS + PPICLF_LRP + i)
-            ! integer write
-            if (ppiclf_nid .eq. 0) then
-                open(unit=vtu,file=vtufile,access='stream',form="unformatted" ,position='append')
-                write(vtu) if_lip
-                close(vtu)
-            endif
-
-            call mpi_barrier(ppiclf_comm,ierr)
-
-            j = (i-1)*ppiclf_npart + 1
-    
-            ! write
-            call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
-            call ppiclf_byte_set_view(idisp_lip,pth)
-            call ppiclf_byte_write_mpi(rout_lip(j),icount_lip,iorank,pth ,ierr)
-            call ppiclf_byte_close_mpi(pth,ierr)
-        enddo
+#undef VTU_INCLUDE
 
         if (ppiclf_nid .eq. 0) then
             vtu=867+ppiclf_nid
@@ -1157,8 +1133,359 @@ module ppiclf_io
 
         call ppiclf_printsi(' *End WriteParticleVTU$',ppiclf_cycle)
 
+        call mpi_barrier(ppiclf_comm, ierr)
+        call ppiclf_exittr("Finished WriteParticleVTU", 0.0d0, 0)
         return
     END SUBROUTINE ppiclf_io_WriteParticleVTU
+
+!     SUBROUTINE ppiclf_io_WriteParticleVTUOLD(filein1)
+!         !
+!         ! Input:
+!         !
+!         character (len = *) filein1
+!         !
+!         ! Internal:
+!         !
+!         real*4  rout_pos(3      *PPICLF_LPART) ,rout_sln(PPICLF_LRS*PPICLF_LPART) ,rout_lrp(PPICLF_LRP*PPICLF_LPART) ,rout_lip(3      *PPICLF_LPART)
+!         character*3 filein
+!         character*12 vtufile
+!         character*6  prostr
+!         integer*4 icalld1
+!         save      icalld1
+!         data      icalld1 /0/
+!         integer*4 vtu,pth,prevs(2,ppiclf_np)
+!         integer*8 idisp_pos,idisp_sln,idisp_lrp,idisp_lip,stride_len
+!         integer*4 iint, nnp, nxx, npt_total, jx, jy, jz, if_sz, isize,iadd, if_pos, if_sln, if_lrp, if_lip, ic_pos, ic_sln,ic_lrp, ic_lip, i, j, ie, nps, nglob, nkey, ndum,icount_pos, icount_sln, icount_lrp, icount_lip, iorank,ierr, ivtu_size
+
+!         integer*4 istartout
+!         common /ppiclf_io_restart/ istartout
+!         !
+
+!         call ppiclf_printsi(' *Begin WriteParticleVTU$',ppiclf_cycle)
+
+!         if (icalld1 .eq. 0) icalld1 = istartout
+
+!         icalld1 = icalld1+1
+
+!         nnp   = ppiclf_np ! total number of MPI ranks
+!         nxx   = PPICLF_NPART    ! number of particles on this rank
+
+!         npt_total = ppiclf_iglsum([nxx],1) ! total number of particles across all ranks
+
+!         jx    = 1
+!         jy    = 2
+!         jz    = 1
+!         if (ppiclf_ndim .eq. 3) jz    = 3
+
+!         if_sz = len(filein1)
+!         if (if_sz .lt. 3) then
+!             filein = 'par'
+!         else 
+!             write(filein,'(A3)') filein1
+!         endif
+
+!         ! --------------------------------------------------
+!         ! COPY PARTICLES TO OUTPUT ARRAY
+!         ! --------------------------------------------------
+
+!         isize = 4
+
+!         iadd = 0
+!         if_pos = 3*isize*npt_total
+!         if_sln = 1*isize*npt_total
+!         if_lrp = 1*isize*npt_total
+!         if_lip = 1*isize*npt_total
+
+!         ic_pos = iadd
+!         ic_sln = iadd
+!         ic_lrp = iadd
+!         ic_lip = iadd
+!         do i=1,nxx
+
+!             ic_pos = ic_pos + 1
+!             rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@)
+!             ic_pos = ic_pos + 1
+!             rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@)
+!             ic_pos = ic_pos + 1
+!             if (ppiclf_ndim .eq. 3) then
+!                 rout_pos(ic_pos) = sngl(@{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@)
+!             else
+!                 rout_pos(ic_pos) = 0.0
+!             endif
+!         enddo
+! !#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%y")
+!         do j=1,${n}$
+!             do i=1,nxx
+!                 ic_sln = ic_sln + 1
+!                 rout_sln(ic_sln) = sngl(${particle}$(j))
+!             enddo
+!         enddo
+! !#:endfor
+! !#:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%rprop")
+!         do j=1,${n}$
+!             do i=1,nxx
+!                 ic_lrp = ic_lrp + 1
+!                 rout_lrp(ic_lrp) = sngl(${particle}$(j))
+!             enddo
+!         enddo
+! !#:endfor
+
+! !TODO: This isn't clear, so im just making it work for now, but it needs to be fixed at some point
+!         do j=1,3
+!             do i=1,nxx
+!                 ! This prints out the particle tag info
+!                 ic_lip = ic_lip + 1
+!                 rout_lip(ic_lip) = real(@{USEPARTICLE(ppiclf_parts(i)%iprop)}@(j))
+!             enddo
+!         enddo
+
+!         ! --------------------------------------------------
+!         ! FIRST GET HOW MANY PARTICLES WERE BEFORE THIS RANK
+!         ! --------------------------------------------------
+!         do i=1,nnp
+!             prevs(1,i) = i-1
+!             prevs(2,i) = nxx
+!         enddo
+
+!         nps   = 1 ! index of new proc for doing stuff
+!         nglob = 1 ! unique key to sort by
+!         nkey  = 1 ! number of keys (just 1 here)
+!         ndum = 2
+!         call pfgslib_crystal_ituple_transfer(ppiclf_cr_hndl,prevs, ndum,nnp,nnp,nps)
+!         call pfgslib_crystal_ituple_sort(ppiclf_cr_hndl,prevs, ndum,nnp,nglob,nkey)
+
+!         ! The above is a slightly convoluted way of getting prevs to contain the tuple (rankid, # of particles on rank: rankid) for every rank, sorted by the rankid
+!         ! this allows the loop below to compute the number of particles on ranks before this one
+!         stride_len = 0
+!         if (ppiclf_nid .ne. 0) then
+!             do i=1,ppiclf_nid
+!                 stride_len = stride_len + prevs(2,i)
+!             enddo
+!         endif
+
+!         ! ----------------------------------------------------
+!         ! WRITE EACH INDIVIDUAL COMPONENT OF A BINARY VTU FILE
+!         ! ----------------------------------------------------
+!         write(vtufile,'(A3,I5.5,A4)') filein,icalld1,'.vtu'
+
+!         if (ppiclf_nid .eq. 0) then
+
+!             vtu=867+ppiclf_nid
+!             open(unit=vtu,file=vtufile,status='replace')
+
+!             ! ------------
+!             ! FRONT MATTER
+!             ! ------------
+!             write(vtu,'(A)',advance='no') '<VTKFile '
+!             write(vtu,'(A)',advance='no') 'type="UnstructuredGrid" '
+!             write(vtu,'(A)',advance='no') 'version="1.0" '
+!             if (ppiclf_iendian .eq. 0) then
+!                 write(vtu,'(A)',advance='yes') 'byte_order="LittleEndian">'
+!             elseif (ppiclf_iendian .eq. 1) then
+!                 write(vtu,'(A)',advance='yes') 'byte_order="BigEndian">'
+!             endif
+
+!             write(vtu,'(A)',advance='yes') ' <UnstructuredGrid>'
+
+!             write(vtu,'(A)',advance='yes') '  <FieldData>' 
+!             write(vtu,'(A)',advance='no')  '   <DataArray '  ! time
+!             write(vtu,'(A)',advance='no') 'type="Float32" '
+!             write(vtu,'(A)',advance='no') 'Name="TIME" '
+!             write(vtu,'(A)',advance='no') 'NumberOfTuples="1" '
+!             write(vtu,'(A)',advance='no') 'format="ascii"> '
+!             write(vtu,'(E14.7)',advance='no') ppiclf_time
+!             write(vtu,'(A)',advance='yes') ' </DataArray> '
+
+!             write(vtu,'(A)',advance='no') '   <DataArray '  ! cycle
+!             write(vtu,'(A)',advance='no') 'type="Int32" '
+!             write(vtu,'(A)',advance='no') 'Name="CYCLE" '
+!             write(vtu,'(A)',advance='no') 'NumberOfTuples="1" '
+!             write(vtu,'(A)',advance='no') 'format="ascii"> '
+!             write(vtu,'(I0)',advance='no') ppiclf_cycle
+!             write(vtu,'(A)',advance='yes') ' </DataArray> '
+
+!             write(vtu,'(A)',advance='yes') '  </FieldData>'
+!             write(vtu,'(A)',advance='no') '  <Piece '
+!             write(vtu,'(A)',advance='no') 'NumberOfPoints="'
+!             write(vtu,'(I0)',advance='no') npt_total
+!             write(vtu,'(A)',advance='yes') '" NumberOfCells="0"> '
+
+!             ! -----------
+!             ! COORDINATES 
+!             ! -----------
+!             iint = 0
+!             write(vtu,'(A)',advance='yes') '   <Points>'
+!             call ppiclf_io_WriteDataArrayVTU(vtu,"Position",3,iint)
+!             iint = iint + 3*isize*npt_total + isize
+!             write(vtu,'(A)',advance='yes') '   </Points>'
+
+!             ! ----
+!             ! DATA 
+!             ! ----
+!             write(vtu,'(A)',advance='yes') '   <PointData>'
+
+
+!             ! do ie=1,PPICLF_LRS
+!             !     write(prostr,'(A1,I2.2)') "y",ie
+!             !     call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
+!             !     iint = iint + 1*isize*npt_total + isize
+!             ! enddo
+
+!             ! do ie=1,PPICLF_LRP
+!             !     write(prostr,'(A4,I2.2)') "rprop",ie
+!             !     call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
+!             !     iint = iint + 1*isize*npt_total + isize
+!             ! enddo
+
+!             ! do ie=1,3
+!             !     write(prostr,'(A3,I2.2)') "tag",ie
+!             !     call ppiclf_io_WriteDataArrayVTU(vtu,prostr,1,iint)
+!             !     iint = iint + 1*isize*npt_total + isize
+!             ! enddo
+! #define VTU_INCLUDE(name, prop, size) call ParticleVTUWriteArrayHeader(vtu, name, isize, ppiclf_parts(0)%prop, iint, npt_total)
+! #include <PPICLF_USER_PART_VTU_MAP.h>
+! #undef VTU_INCLUDE
+!             write(vtu,'(A)',advance='yes') '   </PointData> '
+
+!             ! ----------
+!             ! END MATTER
+!             ! ----------
+!             write(vtu,'(A)',advance='yes') '   <Cells> '
+!             write(vtu,'(A)',advance='no')  '    <DataArray '
+!             write(vtu,'(A)',advance='no') 'type="Int32" '
+!             write(vtu,'(A)',advance='no') 'Name="connectivity" '
+!             write(vtu,'(A)',advance='yes') 'format="ascii"/> '
+!             write(vtu,'(A)',advance='no') '    <DataArray '
+!             write(vtu,'(A)',advance='no') 'type="Int32" '
+!             write(vtu,'(A)',advance='no') 'Name="offsets" '
+!             write(vtu,'(A)',advance='yes') 'format="ascii"/> '
+!             write(vtu,'(A)',advance='no') '    <DataArray '
+!             write(vtu,'(A)',advance='no') 'type="Int32" '
+!             write(vtu,'(A)',advance='no') 'Name="types" '
+!             write(vtu,'(A)',advance='yes') 'format="ascii"/> '
+!             write(vtu,'(A)',advance='yes') '   </Cells> '
+!             write(vtu,'(A)',advance='yes') '  </Piece> '
+!             write(vtu,'(A)',advance='yes') ' </UnstructuredGrid> '
+
+!             ! -----------
+!             ! APPEND DATA  
+!             ! -----------
+!             write(vtu,'(A)',advance='no') ' <AppendedData encoding="raw">'
+!             close(vtu)
+
+!             open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
+!             write(vtu) '_'
+!             close(vtu)
+
+!             inquire(file=vtufile,size=ivtu_size)
+!         endif
+
+!         call ppiclf_bcast(ivtu_size, isize)
+
+!         ! byte-displacements
+!         idisp_pos = ivtu_size + isize*(3*stride_len + 1)
+
+!         ! how much to write
+!         icount_pos = 3*nxx
+!         icount_sln = 1*nxx
+!         icount_lrp = 1*nxx
+!         icount_lip = 1*nxx
+
+!         iorank = -1
+
+!         ! integer write
+!         if (ppiclf_nid .eq. 0) then
+!             open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
+!             write(vtu) if_pos
+!             close(vtu)
+!         endif
+
+!         call mpi_barrier(ppiclf_comm,ierr)
+
+!         ! write
+!         call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
+!         call ppiclf_byte_set_view(idisp_pos,pth)
+!         call ppiclf_byte_write_mpi(rout_pos,icount_pos,iorank,pth,ierr)
+!         call ppiclf_byte_close_mpi(pth,ierr)
+
+!         call mpi_barrier(ppiclf_comm,ierr)
+
+!         do i=1,PPICLF_LRS
+!             idisp_sln = ivtu_size + isize*(3*npt_total + (i-1)*npt_total+ (1)*stride_len+ 1 + i)
+
+!             ! integer write
+!             if (ppiclf_nid .eq. 0) then
+!                 open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
+!                 write(vtu) if_sln
+!                 close(vtu)
+!             endif
+   
+!             call mpi_barrier(ppiclf_comm,ierr)
+
+!             j = (i-1)*ppiclf_npart + 1
+    
+!             ! write
+!             call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
+!             call ppiclf_byte_set_view(idisp_sln,pth)
+!             call ppiclf_byte_write_mpi(rout_sln(j),icount_sln,iorank,pth,ierr)
+!             call ppiclf_byte_close_mpi(pth,ierr)
+!         enddo
+
+!         do i=1,PPICLF_LRP
+!             idisp_lrp = ivtu_size + isize*(3*npt_total  + PPICLF_LRS*npt_total+ (i-1)*npt_total+ (1)*stride_len+ 1 + PPICLF_LRS + i)
+
+!             ! integer write
+!             if (ppiclf_nid .eq. 0) then
+!                 open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
+!                 write(vtu) if_lrp
+!                 close(vtu)
+!             endif
+   
+!             call mpi_barrier(ppiclf_comm,ierr)
+
+!             j = (i-1)*ppiclf_npart + 1
+   
+!             ! write
+!             call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
+!             call ppiclf_byte_set_view(idisp_lrp,pth)
+!             call ppiclf_byte_write_mpi(rout_lrp(j),icount_lrp,iorank,pth,ierr)
+!             call ppiclf_byte_close_mpi(pth,ierr)
+!         enddo
+
+!         do i=1,3
+!             idisp_lip = ivtu_size + isize*(3*npt_total+ PPICLF_LRS*npt_total+ PPICLF_LRP*npt_total+ (i-1)*npt_total+ (1)*stride_len+ 1 + PPICLF_LRS + PPICLF_LRP + i)
+!             ! integer write
+!             if (ppiclf_nid .eq. 0) then
+!                 open(unit=vtu,file=vtufile,access='stream',form="unformatted" ,position='append')
+!                 write(vtu) if_lip
+!                 close(vtu)
+!             endif
+
+!             call mpi_barrier(ppiclf_comm,ierr)
+
+!             j = (i-1)*ppiclf_npart + 1
+    
+!             ! write
+!             call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr)
+!             call ppiclf_byte_set_view(idisp_lip,pth)
+!             call ppiclf_byte_write_mpi(rout_lip(j),icount_lip,iorank,pth ,ierr)
+!             call ppiclf_byte_close_mpi(pth,ierr)
+!         enddo
+
+!         if (ppiclf_nid .eq. 0) then
+!             vtu=867+ppiclf_nid
+!             open(unit=vtu,file=vtufile,status='old',position='append')
+
+!             write(vtu,'(A)',advance='yes') '</AppendedData>'
+!             write(vtu,'(A)',advance='yes') '</VTKFile>'
+
+!             close(vtu)
+!         endif
+
+!         call ppiclf_printsi(' *End WriteParticleVTU$',ppiclf_cycle)
+
+!         return
+!     END SUBROUTINE ppiclf_io_WriteParticleVTUOLD
 
     SUBROUTINE ppiclf_io_WriteDataArrayVTU(vtu,dataname,ncomp,idist)
         !
@@ -1396,4 +1723,153 @@ module ppiclf_io
         RETURN
     END subroutine ppiclf_io_WritePerformance
 
+
+
+
+
+
+    ! These functions are part of allowing the user files to control reading and writing of particle vtus
+    subroutine ParticleVTUAppendArrayLen(vtu, vtufile, int)
+        character*12, intent(in) :: vtufile
+
+        integer*4, intent(in) :: vtu,int
+
+        ! integer write
+        if (ppiclf_nid .eq. 0) then
+            open(unit=vtu,file=vtufile,access='stream',form="unformatted",position='append')
+            write(vtu) int
+            close(vtu)
+        endif
+    end subroutine ParticleVTUAppendArrayLen
+
+    subroutine ParticleVTUInit_real(i, partProp, ArraysInfo)
+        integer*4, intent(inout) :: i
+        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        real*8, intent(inout) :: partProp
+        ArraysInfo(i, 1) = 1
+        i = i + 1
+    end subroutine ParticleVTUInit_real
+
+    subroutine ParticleVTUInit_int(i, partProp, ArraysInfo)
+        integer*4, intent(inout) :: i
+        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        integer*4, intent(inout) :: partProp
+        ArraysInfo(i, 1) = 1
+        i = i + 1
+    end subroutine ParticleVTUInit_int
+
+    subroutine ParticleVTUInit_tag(i, partProp, ArraysInfo)
+        integer*4, intent(inout) :: i
+        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        type(PPICLF_t_tag), intent(inout) :: partProp
+        ArraysInfo(i, 1) = 3
+        i = i + 1
+    end subroutine ParticleVTUInit_tag
+
+    subroutine ParticleVTUInit_realNVec(i, partProp, ArraysInfo)
+        integer*4, intent(inout) :: i
+        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        type(PPICLF_t_realNVec), intent(inout) :: partProp
+        ArraysInfo(i, 1) = 3
+        i = i + 1
+    end subroutine ParticleVTUInit_realNVec
+
+    subroutine ParticleVTUReadProp_real(rout_sln, rout_lrp, rout_lip, ic_sln, ic_lip, ic_lrp, partProp)
+        real*8, intent(in) :: rout_sln(:), rout_lrp(:)
+        integer*4, intent(in) :: rout_lip(:)
+        integer*4, intent(inout) :: ic_sln, ic_lip, ic_lrp
+        real*8, intent(inout) :: partProp
+    end subroutine ParticleVTUReadProp_real
+
+    subroutine ParticleVTUReadProp_int(rout_sln, rout_lrp, rout_lip, ic_sln, ic_lip, ic_lrp, partProp)
+        real*8, intent(in) :: rout_sln(:), rout_lrp(:)
+        integer*4, intent(in) :: rout_lip(:)
+        integer*4, intent(inout) :: ic_sln, ic_lip, ic_lrp
+        integer*4, intent(inout) :: partProp
+    end subroutine ParticleVTUReadProp_int
+
+    subroutine ParticleVTUReadProp_tag(rout_sln, rout_lrp, rout_lip, ic_sln, ic_lip, ic_lrp, partProp)
+        real*8, intent(in) :: rout_sln(:), rout_lrp(:)
+        integer*4, intent(in) :: rout_lip(:)
+        integer*4, intent(inout) :: ic_sln, ic_lip, ic_lrp
+        type(PPICLF_t_tag), intent(inout) :: partProp
+    end subroutine ParticleVTUReadProp_tag
+
+    subroutine ParticleVTUReadProp_realNVec(rout_sln, rout_lrp, rout_lip, ic_sln, ic_lip, ic_lrp, partProp)
+        real*8, intent(in) :: rout_sln(:), rout_lrp(:)
+        integer*4, intent(in) :: rout_lip(:)
+        integer*4, intent(inout) :: ic_sln, ic_lip, ic_lrp
+        type(PPICLF_t_realNVec), intent(inout) :: partProp
+    end subroutine ParticleVTUReadProp_realNVec
+
+
+    pure function ParticleVTUWriteProp_real(partProp) result(resultVec)
+        real*8, intent(in) :: partProp
+        real*4             :: resultVec(1:1)
+        resultVec(1) = partProp
+    end function ParticleVTUWriteProp_real
+
+    pure function ParticleVTUWriteProp_int(partProp) result(resultVec)
+        integer*4, intent(in) :: partProp
+        real*8              ::resultVec(1:1)
+        resultVec(1) = REAL(partProp, 4)
+    end function ParticleVTUWriteProp_int
+
+    pure function ParticleVTUWriteProp_tag(partProp) result(resultVec)
+        type(PPICLF_t_tag), intent(in) :: partProp
+        real*8              ::resultVec(1:3)
+        resultVec(1) = REAL(partProp%partNum, 4)
+        resultVec(2) = REAL(partProp%rankNum, 4)
+        resultVec(3) = REAL(partProp%cycleNum, 4)
+    end function ParticleVTUWriteProp_tag
+
+    pure function ParticleVTUWriteProp_realNVec(partProp) result(resultVec)
+        type(PPICLF_t_realNVec), intent(in) :: partProp
+        real*8              ::resultVec(1:3)
+        resultVec = partProp%vec
+    end function ParticleVTUWriteProp_realNVec
+    
+    ! subroutine ParticleVTUWriteArrayHeader_real(vtu, name, prop, isize, iint, npt_total, i)
+    !     integer*4, intent(in) :: vtu, npt_total, isize
+    !     character(len=:), intent(in) :: name
+    !     integer*4, intent(inout) :: iint, i
+    !     real*8, intent(in) :: partProp
+    !     ppiclf_io_WriteDataArrayVTU(vtu, name, 1, iint)
+    !     ParticleVTU_DataArrays(i, 2) = iint
+    !     iint = iint + 1 * isize * npt_total + isize
+    !     i = i + 1
+    ! end subroutine ParticleVTUWriteArrayHeader_real
+    
+    ! subroutine ParticleVTUWriteArrayHeader_int(vtu, name, prop, isize, iint, npt_total, i)
+    !     integer*4, intent(in) :: vtu, npt_total, isize
+    !     character(len=:), intent(in) :: name
+    !     integer*4, intent(inout) :: iint, i
+    !     integer*4, intent(in) :: partProp
+    !     ppiclf_io_WriteDataArrayVTU(vtu, name, 1, iint)
+    !     ParticleVTU_DataArrays(i, 2) = iint
+    !     iint = iint + 1 * isize * npt_total + isize
+    !     i = i + 1
+    ! end subroutine ParticleVTUWriteArrayHeader_int
+    
+    ! subroutine ParticleVTUWriteArrayHeader_tag(vtu, name, prop, isize, iint, npt_total, i)
+    !     integer*4, intent(in) :: vtu, npt_total, isize
+    !     character(len=:), intent(in) :: name
+    !     integer*4, intent(inout) :: iint, i
+    !     type(PPICLF_t_tag), intent(in) :: partProp
+    !     ppiclf_io_WriteDataArrayVTU(vtu, name, 3, iint)
+    !     ParticleVTU_DataArrays(i, 2) = iint
+    !     iint = iint + 3 * isize * npt_total + isize
+    !     i = i + 1
+    ! end subroutine ParticleVTUWriteArrayHeader_tag
+    
+    ! subroutine ParticleVTUWriteArrayHeader_realNVec(vtu, name, isize, prop, iint, npt_total, i)
+    !     integer*4, intent(in) :: vtu, npt_total, isize
+    !     character(len=:), intent(in) :: name
+    !     integer*4, intent(inout) :: iint, i
+    !     type(PPICLF_t_realNVec), intent(in) :: partProp
+    !     ppiclf_io_WriteDataArrayVTU(vtu, name, 3, iint)
+    !     ParticleVTU_DataArrays(i, 2) = iint
+    !     iint = iint + 3 * isize * npt_total + isize
+    !     i = i + 1
+    ! end subroutine ParticleVTUWriteArrayHeader_realNVec
 end module ppiclf_io

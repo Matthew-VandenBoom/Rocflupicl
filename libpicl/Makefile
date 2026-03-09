@@ -24,50 +24,53 @@ SOURCE_ROOT_USER=$(INSTALL_LOCATION)/user_files
 BUILD_ROOT_PPICLF=$(INSTALL_LOCATION)/ppiclF/build
 BUILD_ROOT_USER=$(BUILD_ROOT_PPICLF)/user
 PPICLF_IFLAGS+=-I$(SOURCE_ROOT_PPICLF)/include -I$(SOURCE_ROOT_USER) -I$(SOURCE_ROOT_USER)/include 
-PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=20
+PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5 -O3 -g
 PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -J$(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
-PPICLF_FFLAGS+=-J$(BUILD_ROOT_PPICLF)
+PPICLF_FFLAGS+=-J$(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
 
 # GSLIB LIBRARY
 SOURCE_ROOT_GSLIB=$(INSTALL_LOCATION)/ppiclF/3rd_party/gslib
 SOURCE_ROOT_GSLIB_OBJ=$(SOURCE_ROOT_GSLIB)/gslib/src
 GSLIB_IFLAGS+=-I$(SOURCE_ROOT_GSLIB)/include
 
-SRCUSR =    $(SOURCE_ROOT_USER)/ppiclf_user_MapProjPart.f90    \
+SRCUSR =	$(SOURCE_ROOT_USER)/ppiclf_user_particle.F90
+
+UNUSED =    $(SOURCE_ROOT_USER)/ppiclf_user_MapProjPart.f90    \
 			$(SOURCE_ROOT_USER)/ppiclf_m_user_data.f90 \
 			$(SOURCE_ROOT_USER)/ppiclf_m_user_RFLUdata.f90 \
-			$(SOURCE_ROOT_USER)/ppiclf_user_SetYdot.fpp		\
-            $(SOURCE_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_InitZero.fpp     \
+			$(SOURCE_ROOT_USER)/ppiclf_user_SetYdot.F90		\
+            $(SOURCE_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_InitZero.F90     \
 			$(SOURCE_ROOT_USER)/ppiclf_user_NearestNeighbor.f90 \
-     		$(SOURCE_ROOT_USER)/ppiclf_user_subbinMap.fpp       \
-			$(SOURCE_ROOT_USER)/ppiclf_m_user_ForceModels.fpp \
-            $(SOURCE_ROOT_USER)/ppiclf_user_BurnRateModel.fpp   \
-            $(SOURCE_ROOT_USER)/ppiclf_user_Lift.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_Torque.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_HeatTransfer.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_Fluctuations.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_QuasiSteady.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_ViscousUnsteady.fpp     \
-            $(SOURCE_ROOT_USER)/Added_Mass/ppiclf_user_AddedMass_functions.fpp   \
-            $(SOURCE_ROOT_USER)/ppiclf_user_AddedMass.fpp     \
+     		$(SOURCE_ROOT_USER)/ppiclf_user_subbinMap.F90       \
+			$(SOURCE_ROOT_USER)/ppiclf_m_user_ForceModels.F90 \
+            $(SOURCE_ROOT_USER)/ppiclf_user_BurnRateModel.F90   \
+            $(SOURCE_ROOT_USER)/ppiclf_user_Lift.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_Torque.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_HeatTransfer.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_Fluctuations.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_QuasiSteady.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_ViscousUnsteady.F90     \
+            $(SOURCE_ROOT_USER)/Added_Mass/ppiclf_user_AddedMass_functions.F90   \
+            $(SOURCE_ROOT_USER)/ppiclf_user_AddedMass.F90     \
 			
-UNUSED=     $(SOURCE_ROOT_USER)/ppiclf_user_unitproblems.fpp     \
-            $(SOURCE_ROOT_USER)/ppiclf_user_debug.fpp     \
+UNUSED=     $(SOURCE_ROOT_USER)/ppiclf_user_unitproblems.F90     \
+            $(SOURCE_ROOT_USER)/ppiclf_user_debug.F90     \
 
-SRC =       $(SOURCE_ROOT_PPICLF)/ppiclf_data.fpp \
-            $(SOURCE_ROOT_PPICLF)/ppiclf_op.fpp       \
-            $(SOURCE_ROOT_PPICLF)/ppiclf_m_comm.fpp     \
-            $(SOURCE_ROOT_PPICLF)/ppiclf_io.fpp       \
-			$(SOURCE_ROOT_PPICLF)/ppiclf_initsolve.fpp       \
-            $(SOURCE_ROOT_PPICLF)/ppiclf_solve.fpp    \
-			$(SOURCE_ROOT_PPICLF)/ppiclf_user.fpp	\
-            $(SOURCE_ROOT_PPICLF)/ppiclf_mxm.fpp	\
-			$(SOURCE_ROOT_PPICLF)/ppiclf_m_types.fpp	\
-			$(SOURCE_ROOT_PPICLF)/ppiclf_m_particledata.fpp	
+SRC=		$(SOURCE_ROOT_PPICLF)/ppiclf_m_types.F90	\
+			$(SOURCE_ROOT_PPICLF)/ppiclf_user.F90	\
+			$(SOURCE_ROOT_PPICLF)/ppiclf_initsolve.F90       \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_data.F90 \
+            $(SOURCE_ROOT_PPICLF)/ppiclf_mxm.F90	\
+			$(SOURCE_ROOT_PPICLF)/ppiclf_m_particledata.F90	\
+			$(SOURCE_ROOT_PPICLF)/ppiclf_op.F90       \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_m_particle_ops.F90 \
+		    $(SOURCE_ROOT_PPICLF)/ppiclf_m_comm.F90     \
+            $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90       \
+            $(SOURCE_ROOT_PPICLF)/ppiclf_solve.F90    \
 
-OBJ = 	$(patsubst $(SOURCE_ROOT_PPICLF)/%.fpp,$(BUILD_ROOT_PPICLF)/%.o,$(SRC))
-OBJUSR =  	$(patsubst $(SOURCE_ROOT_USER)/%,$(BUILD_ROOT_USER)/%,$(patsubst %.f90,%.o,$(patsubst %.fpp,%.o,$(SRCUSR))))
+OBJ = 	$(patsubst $(SOURCE_ROOT_PPICLF)/%.F90,$(BUILD_ROOT_PPICLF)/%.o,$(SRC))
+OBJUSR =  	$(patsubst $(SOURCE_ROOT_USER)/%.F90,$(BUILD_ROOT_USER)/%.o,$(SRCUSR))
 
 PRE = $(SOURCE_ROOT_PPICLF)/PPICLF_SOLN.h     \
       $(SOURCE_ROOT_PPICLF)/PPICLF_GRID.h     \
@@ -79,8 +82,16 @@ PRE = $(SOURCE_ROOT_PPICLF)/PPICLF_SOLN.h     \
 POS = $(SOURCE_ROOT_PPICLF)/PPICLF
 
 
-default: libppicl
-test: $(BUILD_ROOT_PPICLF)/ppiclf_m_particledata.f90
+default: $(OBJ)  #libppiclcore
+test: $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o
+
+
+testprog: $(BUILD_ROOT_PPICLF)/testprog
+	@$(BUILD_ROOT_PPICLF)/testprog
+
+$(BUILD_ROOT_PPICLF)/testprog: $(BUILD_ROOT_USER)/ppiclf_user_particle.o $(SOURCE_ROOT_PPICLF)/testfile.F90
+	$(FC) $(SOURCE_ROOT_PPICLF)/testfile.F90 -o $@ $(PPICLF_FFLAGS) $(OBJ) $(OBJUSR)
+
 # default: $(BUILD_ROOT_USER)/ppiclf_user_imp.o
 
 libppicl: $(BUILD_ROOT_PPICLF)/libppiclF.a
@@ -98,10 +109,14 @@ $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_io.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_user.o
+$(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o
 
 
 
 $(BUILD_ROOT_PPICLF)/ppiclf_op.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
+
+$(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
+$(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_io.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
 $(BUILD_ROOT_PPICLF)/ppiclf_io.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
@@ -114,10 +129,12 @@ $(BUILD_ROOT_PPICLF)/ppiclf_solve.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_user.o
 $(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_particledata.o
+$(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
+$(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_m_particledata.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_types.o
 
-$(BUILD_ROOT_PPICLF)/ppiclf_user.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_types.o
+$(BUILD_ROOT_PPICLF)/ppiclf_user.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 
 # user file dependencies 
 $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_m_user_ForceModels.o
@@ -149,15 +166,27 @@ $(BUILD_ROOT_USER)/ppiclf_user_AddedMass.o: $(BUILD_ROOT_USER)/ppiclf_m_user_dat
 
 $(BUILD_ROOT_USER)/ppiclf_user_AddedMass.o: $(BUILD_ROOT_USER)/Added_Mass/ppiclf_user_AddedMass_functions.o
 
+$(BUILD_ROOT_USER)/ppiclf_user_particle.o:	$(BUILD_ROOT_PPICLF)/ppiclf_m_types.o
+$(BUILD_ROOT_USER)/ppiclf_user_particle.o:	$(BUILD_ROOT_PPICLF)/ppiclf_op.o
 
-$(BUILD_ROOT_PPICLF)/%.f90 : $(SOURCE_ROOT_PPICLF)/%.fpp
-	@mkdir -vp $(BUILD_ROOT_PPICLF)
-	@fypp -I $(SOURCE_ROOT_USER) -I $(SOURCE_ROOT_PPICLF)/include $< $@ -m fyppmacros -M $(INSTALL_LOCATION)/ppiclF/tools/ ${PREPROCDEFINES} -n
 
-$(BUILD_ROOT_PPICLF)/%.o : $(BUILD_ROOT_PPICLF)/%.f90
+$(BUILD_ROOT_PPICLF)/%.o : $(SOURCE_ROOT_PPICLF)/%.F90
+	@echo called standard build on $<
 	@mkdir -vp $(BUILD_ROOT_PPICLF)
-	@$(FC) $< -E -o $(BUILD_ROOT_PPICLF)/$*.i $(PPICLF_FFLAGS)
 	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
+$(BUILD_ROOT_PPICLF)/%.f90 : $(SOURCE_ROOT_PPICLF)/%.F90
+	@echo called standard preprocess on $<
+	@mkdir -vp $(BUILD_ROOT_PPICLF)
+	@$(FC) $< -E -o $@ $(PPICLF_FFLAGS)
+
+$(BUILD_ROOT_PPICLF)/ppiclf_io.f90 $(BUILD_ROOT_PPICLF)/ppiclf_io.o : $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90
+	@echo called custom ppiclf_io build
+	@mkdir -vp $(BUILD_ROOT_PPICLF)
+	@$(FC) $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90 -E -o $(BUILD_ROOT_PPICLF)/ppiclf_io.i $(PPICLF_FFLAGS) -P
+	@sed 's/RE_NEWLINE/\n/g' $(BUILD_ROOT_PPICLF)/ppiclf_io.i > $(BUILD_ROOT_PPICLF)/ppiclf_io.f90
+	@echo $@
+	@echo $<
+	@$(if $(and $(findstring ./$@,$(BUILD_ROOT_PPICLF)/ppiclf_io.o),$(findstring $(BUILD_ROOT_PPICLF)/ppiclf_io.o,./$@)),@$(FC) $(BUILD_ROOT_PPICLF)/ppiclf_io.f90 -c -o $@ $(PPICLF_FFLAGS))
 # mpifort source/ppiclf_data.f90 -cpp -o ppiclf_data.o -Isource/include -I../user_files -ffree-line-length-none
 
 
@@ -170,13 +199,13 @@ $(BUILD_ROOT_PPICLF)/libppiclF.a: $(BUILD_ROOT_PPICLF)/libppiclcore.a $(OBJUSR)
 	cp $(BUILD_ROOT_PPICLF)/libppiclcore.a $(BUILD_ROOT_PPICLF)/libppiclF.a
 	ar rv $(BUILD_ROOT_PPICLF)/libppiclF.a $(OBJUSR)
 
-$(BUILD_ROOT_USER)/%.o : $(SOURCE_ROOT_USER)/%.f90
-	mkdir -vp $(BUILD_ROOT_USER)
-	$(FC) $< -c -o $@ $(PPICLF_USER_FFLAGS)
 
-$(BUILD_ROOT_USER)/%.f90 : $(SOURCE_ROOT_USER)/%.fpp
+
+$(BUILD_ROOT_USER)/%.o : $(SOURCE_ROOT_USER)/%.F90
 	@mkdir -vp $(BUILD_ROOT_USER)
-	@fypp -I $(SOURCE_ROOT_USER) -I $(SOURCE_ROOT_PPICLF)/include $< $@ -m fyppmacros -M $(INSTALL_LOCATION)/ppiclF/tools/ ${PREPROCDEFINES} -n
+	@$(FC) $< -c -o $@ $(PPICLF_USER_FFLAGS)
+
+
 
 $(BUILD_ROOT_PPICLF)/%.o : $(BUILD_ROOT_USER)/%.f90
 	@mkdir -vp $(BUILD_ROOT_USER)
