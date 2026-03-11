@@ -4,8 +4,15 @@ module ppiclf_user
     use ppiclf_user_particle
     implicit none
     interface
-        module subroutine ppiclf_user_SetYdot
-        end subroutine ppiclf_user_SetYdot
+        ! module subroutine ppiclf_user_SetYdot
+        ! end subroutine ppiclf_user_SetYdot
+        module subroutine ppiclf_user_YdotParticle(ip, particle, interp, feedback)
+            integer*4, intent(in) :: ip ! particle index into the internal ppiclf array, shouldn't be directly used by user. Given for use when calling other ppiclf functions
+            type(PPICLF_U_t_particle), intent(inout) :: particle ! particle structure, as defined by the user in ppiclf_user_particle.F90
+            type(PPICLF_U_t_interp), intent(in) :: interp ! Interpolated data from fluid solver
+            type(PPICLF_U_t_feedback), intent(out) :: feedback ! feedback data, to be filled in ydotParticle
+        end subroutine ppiclf_user_YdotParticle
+
         module subroutine ppiclf_user_MapProjPart
         ! module subroutine ppiclf_user_MapProjPart(map,y,ydot,ydotc,rprop,rprop4)
         !     real*8, intent(in) :: y    (PPICLF_LRS)

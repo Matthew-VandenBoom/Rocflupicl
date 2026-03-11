@@ -6,7 +6,7 @@ module ppiclf_io
     use ppiclf_data, only: ppiclf_npart
     use ppiclf_m_particledata, only: ppiclf_parts
     ! grid data
-    use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_nfvcells, PPICLF_NCELLS_FV2PICL_ORIG
+    use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_nfvcells, ppiclf_nCells_FV2PICL_Sent
     ! particle options variables
     use ppiclf_data, only: ppiclf_filter, ppiclf_ndim, ppiclf_ngrids, ppiclf_cycle, ppiclf_time, ppiclf_dt, ppiclf_imethod, ppiclf_iostep, ppiclf_overlap, ppiclf_iendian, ppiclf_restart, ppiclf_printbinvtu
     ! comm variables
@@ -1661,7 +1661,7 @@ module ppiclf_io
         localParticles(1) = ppiclf_npart 
         localParticles(2) = ppiclf_npart_gp
 
-        localCells(1) = ppiclf_nCells_FV2PICL_Orig
+        localCells(1) = ppiclf_nCells_FV2PICL_Sent
         localCells(2) = ppiclf_nCells_FV2PICL                  
 
         ! Move all data to rank 0 for printing.

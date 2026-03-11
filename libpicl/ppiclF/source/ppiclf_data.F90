@@ -2,7 +2,8 @@
 ! PPICLF_STD has been modified to include PPICLF_USER.h
 
 module ppiclf_data
-    use ppiclf_user_particle, only: PPICLF_U_t_interp
+    use ppiclf_user_particle, only: PPICLF_U_t_interp, PPICLF_U_t_interp
+    use ppiclf_m_wrapped_types, only: ppiclf_t_fluidCell_wrapped, ppiclf_t_interp_wrapped, ppiclf_t_feedback_wrapped
     implicit none
 
     save
@@ -51,13 +52,13 @@ module ppiclf_data
     
     ! Holds the interpolation data passed in by the driver files until solve_InterpField is called by solve_InitSolve or solve_SetYdot
     ! cell indexing matches PPICLF_FLUID_GRID
-    REAL*8 PPICLF_INT_FLD_INPUT(PPICLF_LEE,PPICLF_LRP_INT)
+    type(PPICLF_U_t_interp) PPICLF_INT_FLD_INPUT(PPICLF_LEE)
     
 
     ! Contains the mapped fluid cell location data
     ! set from received data in comm_MapOverlapGrid, ppiclf_cell_map maps the indicies in this back to their home rank/index
     ! used in ppiclf_solve, many places
-    REAL*8 PPICLF_PICL_GRID(7,PPICLF_LEE)
+    type(ppiclf_t_fluidCell_wrapped) PPICLF_PICL_GRID(PPICLF_LEE)
     
     ! precomputed distance from a particle to the center of each of its nnearest cells
     ! nnearest can be found in ppiclf_npart2cell, and the cell indicies can be found in PPICLF_PART2cell_map
@@ -79,42 +80,48 @@ module ppiclf_data
     ! before transfer, is filled from PPICLF_INT_FLD_INPUT using ppiclf_cell_map_interp in solve_InterpField
     ! it is transfered in solve_InterpTupleTransfer
     ! it is only used in solve_interpolate
-    type(PPICLF_U_t_interp) PPICLF_INT_FLD(PPICLF_LEE)
+    type(ppiclf_t_interp_wrapped) PPICLF_INT_FLD(PPICLF_LEE)
 
-    ! Stores cell to rank mapping
+    ! Stores cell to rank mapping. From this rank's cells to the ranks that need them for computation.
+    ! It is always sorted such that all of the cells going to a given rank are contiguous, and they are sorted in increasing order of rank num
     ! Index      1: Fluid solver cell id (index of the cell within home rank's PPICLF_FLUID_GRID)
     ! Index      2: Home rank # (ppiclf_nid of home rank)
-    ! Index      3: Destination rank # (rank where this is being sent (before transfer) OR current rank, where it is being used (after transfer))
+    ! Index      3: Destination rank # (rank where this is being sent)
     ! Indicies 4-6: Bin indicies
-    ! Filled in ppiclf_comm_MapOverlapGrid, then used to fill ppiclf_picl_grid with real data, then sent out
+    ! Filled in ppiclf_comm_MapOverlapGrid, sorted by ppiclf_CELL_MAP_GroupByDestRank, then used to fill ppiclf_picl_grid with real data, then sent out
     INTEGER*4 PPICLF_CELL_MAP(PPICLF_LRMAX,PPICLF_LEE)
-    
+
+    ! saved copies of the counts and displacements of the mapped cells within PPICLF_CELL_MAP for each of the ranks.
+    ! allocated in comm_InitMPI with len=ppiclf_np + 1 (number of ranks indexed (0:ppiclf_np) ) and deallocated in comm_FinalizeMPI
+    ! For use in MPI_ALLTOALLV
+    INTEGER*4, allocatable :: PPICLF_CELL_MAP_SENDCOUNTS(:), PPICLF_CELL_MAP_SENDDISPS(:), PPICLF_CELL_MAP_RECVCOUNTS(:), PPICLF_CELL_MAP_RECVDISPS(:)
+
     ! backup copy of PPICLF_CELL_MAP from before transfer.
     ! used to create ppiclf_cell_map_interp
-    INTEGER*4 PPICLF_CELL_MAP_ORIG(PPICLF_LRMAX,PPICLF_LEE)
+    ! INTEGER*4 PPICLF_CELL_MAP_ORIG(PPICLF_LRMAX,PPICLF_LEE)
 
     ! Indirect copy of PPICLF_CELL_MAP, used for transfering interpolation data
     ! needs to be the same as PPICLF_CELL_MAP was originally, so that interp data goes to the 
     ! same ranks as the coresponding cell location data, and importantly, has the same index.
-    INTEGER*4 PPICLF_CELL_MAP_INTERP(PPICLF_LRMAX,PPICLF_LEE)
+    ! INTEGER*4 PPICLF_CELL_MAP_INTERP(PPICLF_LRMAX,PPICLF_LEE)
 
     ! Copied from PPICLF_CELL_MAP_INTERP in ppiclf_solve_ProjectParticleGrid.
     ! Not sure why it is coppied from map_interp instead of just PPICLF_CELL_MAP,
     !  I think they should be the same at this point in time
     ! Used to transfer projection data back to the rank where the cells came from,
     ! and after the transfer maps the projection data back to its original cell
-    INTEGER*4 PPICLF_CELL_MAP_PROJ(PPICLF_LRMAX,PPICLF_LEE),      &
+    INTEGER*4 PPICLF_CELL_MAP_PROJ(PPICLF_LRMAX,PPICLF_LEE)
 
     ! # of mapped fluid cells recieved from other ranks
     INTEGER*4 PPICLF_NCELLS_FV2PICL
     ! # of mapped fluid cells sent to other ranks, set from PPICLF_NCELLS_FV2PICL before transfering in MapOverlapGrid
     ! used to set PPICLF_NCELLS_INTERP in solve_InitInterp
-    INTEGER*4 PPICLF_NCELLS_FV2PICL_ORIG
+    INTEGER*4 PPICLF_NCELLS_FV2PICL_SENT !PPICLF_NCELLS_FV2PICL_ORIG
 
     ! = PPICLF_NCELLS_FV2PICL_ORIG
     ! used for array indexing when setting up interpolation data for transfer
     ! After transfer is equal to PPICLF_NCELLS_FV2PICL, and is used when looping over mapped cells in solve_SBParticleToCellMap
-    INTEGER*4 PPICLF_NCELLS_INTERP
+    ! INTEGER*4 PPICLF_NCELLS_INTERP
 
     ! = ppiclf_ncells_FV2PICL
     ! Used for array indexing when setting up projection data for transfer

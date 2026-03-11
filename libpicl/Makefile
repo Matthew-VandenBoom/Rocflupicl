@@ -33,9 +33,8 @@ SOURCE_ROOT_GSLIB=$(INSTALL_LOCATION)/ppiclF/3rd_party/gslib
 SOURCE_ROOT_GSLIB_OBJ=$(SOURCE_ROOT_GSLIB)/gslib/src
 GSLIB_IFLAGS+=-I$(SOURCE_ROOT_GSLIB)/include
 
-SRCUSR =	$(SOURCE_ROOT_USER)/ppiclf_user_particle.F90
-
-UNUSED =    $(SOURCE_ROOT_USER)/ppiclf_user_MapProjPart.f90    \
+SRCUSR =	$(SOURCE_ROOT_USER)/ppiclf_user_particle.F90 \
+            $(SOURCE_ROOT_USER)/ppiclf_user_MapProjPart.f90    \
 			$(SOURCE_ROOT_USER)/ppiclf_m_user_data.f90 \
 			$(SOURCE_ROOT_USER)/ppiclf_m_user_RFLUdata.f90 \
 			$(SOURCE_ROOT_USER)/ppiclf_user_SetYdot.F90		\
@@ -64,10 +63,14 @@ SRC=		$(SOURCE_ROOT_PPICLF)/ppiclf_m_types.F90	\
             $(SOURCE_ROOT_PPICLF)/ppiclf_mxm.F90	\
 			$(SOURCE_ROOT_PPICLF)/ppiclf_m_particledata.F90	\
 			$(SOURCE_ROOT_PPICLF)/ppiclf_op.F90       \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_op_imp.F90 \
 			$(SOURCE_ROOT_PPICLF)/ppiclf_m_particle_ops.F90 \
 		    $(SOURCE_ROOT_PPICLF)/ppiclf_m_comm.F90     \
             $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90       \
             $(SOURCE_ROOT_PPICLF)/ppiclf_solve.F90    \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_m_wrapped_types.F90 \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_m_transfers.F90 \
+			$(SOURCE_ROOT_PPICLF)/ppiclf_m_wrapped_types_imp.F90 \
 
 OBJ = 	$(patsubst $(SOURCE_ROOT_PPICLF)/%.F90,$(BUILD_ROOT_PPICLF)/%.o,$(SRC))
 OBJUSR =  	$(patsubst $(SOURCE_ROOT_USER)/%.F90,$(BUILD_ROOT_USER)/%.o,$(SRCUSR))
@@ -82,8 +85,8 @@ PRE = $(SOURCE_ROOT_PPICLF)/PPICLF_SOLN.h     \
 POS = $(SOURCE_ROOT_PPICLF)/PPICLF
 
 
-default: $(OBJ)  #libppiclcore
-test: $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o
+default: libppicl
+test: $(BUILD_ROOT_PPICLF)/ppiclf_m_transfers.o
 
 
 testprog: $(BUILD_ROOT_PPICLF)/testprog
@@ -110,10 +113,11 @@ $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_io.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_user.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o
+$(BUILD_ROOT_PPICLF)/ppiclf_m_comm.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_transfers.o
 
 
 
-$(BUILD_ROOT_PPICLF)/ppiclf_op.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
+$(BUILD_ROOT_PPICLF)/ppiclf_op_imp.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 $(BUILD_ROOT_PPICLF)/ppiclf_m_particle_ops.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
@@ -133,6 +137,10 @@ $(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_data.o
 $(BUILD_ROOT_PPICLF)/ppiclf_initsolve.o: $(BUILD_ROOT_PPICLF)/ppiclf_op.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_m_particledata.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_types.o
+
+$(BUILD_ROOT_PPICLF)/ppiclf_data.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_wrapped_types.o
+
+$(BUILD_ROOT_PPICLF)/ppiclf_m_wrapped_types.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_user.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 
@@ -173,6 +181,7 @@ $(BUILD_ROOT_USER)/ppiclf_user_particle.o:	$(BUILD_ROOT_PPICLF)/ppiclf_op.o
 $(BUILD_ROOT_PPICLF)/%.o : $(SOURCE_ROOT_PPICLF)/%.F90
 	@echo called standard build on $<
 	@mkdir -vp $(BUILD_ROOT_PPICLF)
+# 	@$(FC) $< -E -o $(BUILD_ROOT_PPICLF)/$*.i $(PPICLF_FFLAGS)
 	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
 $(BUILD_ROOT_PPICLF)/%.f90 : $(SOURCE_ROOT_PPICLF)/%.F90
 	@echo called standard preprocess on $<

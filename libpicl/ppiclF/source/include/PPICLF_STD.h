@@ -131,3 +131,11 @@
 !#undef PPICLF_LWALL
 #endif
 
+
+#ifdef __GFORTRAN__
+#define PASTE(a) a
+#define CAT(a,b) PASTE(a)b
+#else
+#define PASTE(a) a ## b
+#define CAT(a,b) PASTE(a,b)
+#endif

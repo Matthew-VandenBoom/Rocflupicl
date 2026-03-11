@@ -5,7 +5,8 @@ module ppiclf_m_comm
     use ppiclf_data, only: ppiclf_npart
     use ppiclf_m_particledata, only: ppiclf_parts, ppiclf_gparts
     ! grid data
-    use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_ncells_fv2picl_orig, ppiclf_nfvcells, ppiclf_xdrange, ppiclf_fluid_grid, ppiclf_cell_map, ppiclf_picl_grid, ppiclf_cell_map_Orig
+    use ppiclf_data, only: ppiclf_cell_map_sendcounts, ppiclf_cell_map_senddisps, ppiclf_cell_map_recvcounts, ppiclf_cell_map_recvdisps
+    use ppiclf_data, only: ppiclf_ncells_fv2picl, ppiclf_ncells_fv2picl_sent, ppiclf_nfvcells, ppiclf_xdrange, ppiclf_fluid_grid, ppiclf_cell_map, ppiclf_picl_grid
     ! particle options variables
     use ppiclf_data, only: ppiclf_nndist, ppiclf_binchanged, ppiclf_lcomm, ppiclf_linit, ppiclf_ndim, ppiclf_printbinvtu, ppiclf_overlap, ppiclf_linperiodic, ppiclf_equaldomain, ppiclf_filter, PPICLF_INTERP_DCHK
     ! comm variables
@@ -21,12 +22,14 @@ module ppiclf_m_comm
 
     ! MPI Type handles from ppiclf_m_types:
     use ppiclf_m_types
+    use ppiclf_m_wrapped_types
     ! used functions/subroutines
-    use ppiclf_op, only: ppiclf_iglsum, ppiclf_glmin, ppiclf_glmax, ppiclf_glsum, ppiclf_iglmax, ppiclf_vlmin, ppiclf_vlmax, ppiclf_exittr, ppiclf_copy, ppiclf_prints, ppiclf_icopy
+    use ppiclf_op, only: ppiclf_iglsum, ppiclf_glmin, ppiclf_glmax, ppiclf_glsum, ppiclf_iglmax, ppiclf_vlmin, ppiclf_vlmax, ppiclf_exittr, ppiclf_copy, ppiclf_prints, ppiclf_icopy, ppiclf_CELL_MAP_GroupByDestRank
     use ppiclf_io, only: ppiclf_io_outputdiaggrid
     use ppiclf_m_particledata, only: CopyRealToGhost
     use ppiclf_user_particle, only: ppiclf_user_Create_MPI_Derivedtypes, ppiclf_user_Destroy_MPI_Derivedtypes
     use ppiclf_m_particle_ops, only: ppiclf_particles_GroupBy, ppiclf_particles_GroupByIntoArray, GroupByKeys
+    use ppiclf_m_transfers, only: ppiclf_alltoallv
     ! user functions
     ! use ppiclf_user, only:
     use ppiclf_user_particle, only: PPICLF_U_t_particle, PPICLF_U_t_ghostParticle
@@ -52,7 +55,7 @@ module ppiclf_m_comm
     ! mapping of (local particle index, rank to send to)
     ! INTEGER*4 PPICLF_GP_MAP(0:8, PPICLF_LPART_GP)
 
-    integer, public, save :: user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH
+    integer, public, save :: user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH, user_feedback_MPIH
 
 
     contains
@@ -85,8 +88,12 @@ module ppiclf_m_comm
         CALL ppiclf_prints('    End InitCrystal$')
 
         call ppiclf_m_types_Create_MPI_Derivedtypes
-        call ppiclf_user_Create_MPI_Derivedtypes(user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH, PPICLF_t_realNVec_MPIH, PPICLF_t_tag_MPIH)
-
+        call ppiclf_user_Create_MPI_Derivedtypes(user_particle_MPIH, user_ghost_MPIH, user_interp_MPIH, user_feedback_MPIH, PPICLF_t_realNVec_MPIH, PPICLF_t_tag_MPIH)
+        call ppiclf_m_wrapped_Create_MPI_DerivedTypes
+        allocate(ppiclf_cell_map_sendcounts(0:ppiclf_np - 1))
+        allocate(ppiclf_cell_map_senddisps(0:ppiclf_np - 1))
+        allocate(ppiclf_cell_map_recvcounts(0:ppiclf_np - 1))
+        allocate(ppiclf_cell_map_recvdisps(0:ppiclf_np - 1))
         ! check to make sure subroutine is called in correct order later
         ! on in the code sequence
         PPICLF_LCOMM = .TRUE.
@@ -100,6 +107,10 @@ module ppiclf_m_comm
         !
         call ppiclf_user_Destroy_MPI_Derivedtypes
         call ppiclf_m_types_Destroy_MPI_Derivedtypes
+        deallocate(ppiclf_cell_map_sendcounts)
+        deallocate(ppiclf_cell_map_senddisps)
+        deallocate(ppiclf_cell_map_recvcounts)
+        deallocate(ppiclf_cell_map_recvdisps)
 
         RETURN
     END SUBROUTINE ppiclf_comm_FinalizeMPI
@@ -604,7 +615,7 @@ module ppiclf_m_comm
         ! Internal:
         !
         integer ierr, i
-        integer sendcounts(ppiclf_np), recvcounts(ppiclf_np), senddisp(ppiclf_np), recvdisp(ppiclf_np)
+        integer sendcounts(0:ppiclf_np-1), recvcounts(0:ppiclf_np-1), senddisp(0:ppiclf_np-1), recvdisp(0:ppiclf_np-1)
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
@@ -615,7 +626,7 @@ module ppiclf_m_comm
 
         sendcounts = 0
         senddisp = 0
-        recvcounts = 0 ! initialize to clear maybe-uninitialized warning
+        recvcounts = -1 ! since we don't know how much data we are going to be receiving, set recvcounts to -1 so that ppiclf_alltoallv will determine it for us.
         do i = 1, ppiclf_npart
             if (sendcounts(tempParticles(i)%iprop%ParticleRank) .eq. 0) then
                 senddisp(tempParticles(i)%iprop%ParticleRank) = i
@@ -625,7 +636,7 @@ module ppiclf_m_comm
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
-        call MPI_AllToAllv(tempParticles, sendcounts, senddisp, user_particle_MPIH, ppiclf_parts, recvcounts, recvdisp, user_particle_MPIH, PPICLF_COMM, ierr)
+        call ppiclf_alltoallv(tempParticles, sendcounts, senddisp, ppiclf_parts, recvcounts, recvdisp, user_particle_MPIH, PPICLF_COMM, PPICLF_LPART)
 
 #ifdef PERF
         tfinal = MPI_WTIME()
@@ -654,6 +665,7 @@ module ppiclf_m_comm
         INTEGER*4 ix, iy, iz, ixLow, ixHigh, iyLow, iyHigh, izLow, izHigh 
         REAL*8    rxval, ryval, rzval, EleSizei(3), MaxPoint(3), MinPoint(3), centeri(3), exchCellMultiplier, Max_CellLen(3)
         LOGICAL   partl, ErrorFound
+        type(ppiclf_t_fluidCell_wrapped) PPICLF_PICL_GRID_tosend(PPICLF_LEE)
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
@@ -787,12 +799,18 @@ module ppiclf_m_comm
                 END DO !iy
             END DO !ix
         END DO !ie
+        
+        ppiclf_nCells_FV2PICL_Sent = ppiclf_nCells_FV2PICL
 
-        DO ie=1,ppiclf_nCells_FV2PICL 
+        call ppiclf_CELL_MAP_GroupByDestRank(ppiclf_nCells_FV2PICL_SENT, ppiclf_cell_map, ppiclf_cell_map_sendcounts, ppiclf_cell_map_senddisps, ppiclf_np)
+
+        DO ie=1,ppiclf_nCells_FV2PICL_Sent 
             ! These copy all indicies since Fortran is column-major
             iee = ppiclf_cell_map(1,ie)
-            CALL ppiclf_copy(ppiclf_picl_grid(1,ie),ppiclf_fluid_grid(1,iee),7)
- 
+            ppiclf_picl_grid_tosend(i)%homeCellIndex = iee
+            ppiclf_picl_grid_tosend(i)%homeRank = ppiclf_nid
+            ppiclf_picl_grid_tosend(i)%FluidCell = ppiclf_fluid_grid(:, iee)
+
             ! ppiclf_filter initially set in PICL_TEMP_InitSolver
             ! Want to only consider cells that reside in the particle domain
             ! Update ppiclf_filter for next binning cycle 2.1*dx since next
@@ -805,45 +823,22 @@ module ppiclf_m_comm
             END DO
         END DO
 
+        ! not needed any more since the map isn't actually being sent out and overwritten
         ! Copy mapping since it is need to send fluid properties in interp
-        ppiclf_nCells_FV2PICL_Orig = ppiclf_nCells_FV2PICL
-        DO ie=1,ppiclf_nCells_FV2PICL_Orig
-            ! Copies cells to rank mapping (integer copy)
-            CALL ppiclf_icopy(ppiclf_cell_map_Orig(1,ie),ppiclf_cell_map(1,ie),PPICLF_LRMAX)
-        END DO
+        ! ppiclf_nCells_FV2PICL_Sent = ppiclf_nCells_FV2PICL
+        ! DO ie=1,ppiclf_nCells_FV2PICL_Sent
+        !     ! Copies cells to rank mapping (integer copy)
+        !     CALL ppiclf_icopy(ppiclf_cell_map_Orig(1,ie),ppiclf_cell_map(1,ie),PPICLF_LRMAX)
+        ! END DO
 
-        ! GSLIB required info
-        ! NumPiclCells - number of columns to transfer
-        ! PPICLF_LEE - number of columns declared
-        ! nl - partl row size (dummy logical variable)
-        nl   = 0
-        ! nii - ppiclf_cell_map row size declared
-        nii  = PPICLF_LRMAX
-        ! njj - Row index of ppiclf_cell_map with receiver processor/rank
-        njj  = 3
-        ! nrr - ppiclf_rocGrid row size declared
-        nrr  = 7
-        ! Defines sorting order
-        nkey(1) = 2
-        nkey(2) = 1
+       
 
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
-
-        CALL pfgslib_crystal_tuple_transfer(                 & 
-            ppiclf_cr_hndl,ppiclf_nCells_FV2PICL,PPICLF_LEE  & !setup
-            ,ppiclf_cell_map,nii                             & ! Integer Comm
-            ,partl,nl                                        & ! Logical Comm
-            ,ppiclf_picl_grid,nrr                            & ! Real Comm
-            ,njj)                                              ! Receiver processor index
-        CALL pfgslib_crystal_tuple_sort(                     &
-            ppiclf_cr_hndl,ppiclf_nCells_FV2PICL             & !setup
-            ,ppiclf_cell_map,nii                             & !Integer to sort
-            ,partl,nl                                        & !Logical to sort
-            ,ppiclf_picl_grid,nrr                            & !Real to sort
-            ,nkey,2)                                           !sorting method
-
+        call ppiclf_alltoallv(ppiclf_picl_grid_tosend, ppiclf_cell_map_sendcounts, ppiclf_cell_map_senddisps, ppiclf_picl_grid, ppiclf_cell_map_recvcounts, ppiclf_cell_map_recvdisps, ppiclf_t_fluidCell_wrapped_MPIH, ppiclf_comm, PPICLF_LEE)
+        
+        PPICLF_NCELLS_FV2PICL = sum(ppiclf_cell_map_recvcounts)
 #ifdef PERF
         tfinal = MPI_WTIME()
         PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
@@ -859,7 +854,7 @@ module ppiclf_m_comm
         DO ie = 1,ppiclf_nCells_FV2PICL ! Loop through cells mapped to bin
             DO l = 1,3
             ! Find max cell lengths in all dimensions
-            IF(ppiclf_picl_grid(3+l,ie) .GT. Max_CellLen(l))Max_CellLen(l) = ppiclf_picl_grid(3+l,ie)
+            IF(ppiclf_picl_grid(ie)%FluidCell(3+l) .GT. Max_CellLen(l)) Max_CellLen(l) = ppiclf_picl_grid(ie)%FluidCell(3+l)
             END DO !l
         END DO !ie
         DO l = 1,3
@@ -1066,7 +1061,7 @@ module ppiclf_m_comm
 
     SUBROUTINE ppiclf_comm_MoveGhost
         integer ierr, i
-        integer sendcounts(ppiclf_np), recvcounts(ppiclf_np), senddisp(ppiclf_np), recvdisp(ppiclf_np)
+        integer sendcounts(0:ppiclf_np-1), recvcounts(0:ppiclf_np-1), senddisp(0:ppiclf_np-1), recvdisp(0:ppiclf_np-1)
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
@@ -1075,7 +1070,7 @@ module ppiclf_m_comm
         allocate(tempGhosts(ppiclf_npart_gp))
         call ppiclf_ghostParticles_GroupByIntoArray(ppiclf_gparts, tempGhosts, [GroupByKeys%RankNum], ierr)
 
-        recvcounts = 0 ! initialize to clear maybe-uninitialized warning
+        recvcounts = -1
         sendcounts = 0
         senddisp = 0
         do i = 1, ppiclf_npart_gp
@@ -1087,7 +1082,7 @@ module ppiclf_m_comm
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
-        call MPI_AllToAllv(tempGhosts, sendcounts, senddisp, user_ghost_MPIH, ppiclf_gparts, recvcounts, recvdisp, user_ghost_MPIH, PPICLF_COMM, ierr)
+        call ppiclf_alltoallv(tempGhosts, sendcounts, senddisp, ppiclf_gparts, recvcounts, recvdisp, user_ghost_MPIH, PPICLF_COMM, PPICLF_LPART_GP)
 
 #ifdef PERF
         tfinal = MPI_WTIME()
