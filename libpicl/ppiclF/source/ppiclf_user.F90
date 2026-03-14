@@ -4,13 +4,19 @@ module ppiclf_user
     use ppiclf_user_particle
     implicit none
     interface
-        ! module subroutine ppiclf_user_SetYdot
-        ! end subroutine ppiclf_user_SetYdot
-        module subroutine ppiclf_user_YdotParticle(ip, particle, interp, feedback)
+        ! called once per timestep, before the main loop of YdotParticle calls over every particle
+        module subroutine ppiclf_user_SetYdotInit
+        end subroutine ppiclf_user_SetYdotInit
+
+        module subroutine ppiclf_user_SetYdotFinal
+        end subroutine ppiclf_user_SetYdotFinal
+        
+        module subroutine ppiclf_user_YdotParticle(ip, particle, interp, feedback, ierr)
             integer*4, intent(in) :: ip ! particle index into the internal ppiclf array, shouldn't be directly used by user. Given for use when calling other ppiclf functions
             type(PPICLF_U_t_particle), intent(inout) :: particle ! particle structure, as defined by the user in ppiclf_user_particle.F90
             type(PPICLF_U_t_interp), intent(in) :: interp ! Interpolated data from fluid solver
             type(PPICLF_U_t_feedback), intent(out) :: feedback ! feedback data, to be filled in ydotParticle
+            integer*4, intent(out) :: ierr
         end subroutine ppiclf_user_YdotParticle
 
         module subroutine ppiclf_user_MapProjPart
@@ -26,16 +32,6 @@ module ppiclf_user
         module subroutine ppiclf_user_NearestNeighbor(i)
             integer*4 i
         end subroutine ppiclf_user_NearestNeighbor
-        module subroutine ppiclf_user_EvalNearestNeighbor(i,j, neighbor)!,yi,rpropi,yj,rpropj)
-            integer*4 i
-            integer*4 j
-            type(PPICLF_U_t_ghostParticle) :: neighbor
-            ! removed the extra parameters, because now i and j can be used to index into the particle array, regardless of ghost or not.
-            ! real*8 yi    (PPICLF_LRS)    
-            ! real*8 rpropi(PPICLF_LRP)
-            ! real*8 yj    (PPICLF_LRS)    
-            ! real*8 rpropj(PPICLF_LRP)
-        end subroutine ppiclf_user_EvalNearestNeighbor
 
         module subroutine ppiclf_user_InitZero
         end subroutine ppiclf_user_InitZero

@@ -20,27 +20,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only:
+    use ppiclf_m_particledata, only:
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only: ppiclf_dt
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only: 
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only: 
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -57,30 +56,45 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
     contains
     module procedure ppiclf_user_Torque_driver
         !
+        ! Input:
+        !
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp    
+        ! integer*4, intent(in) :: iStage
+        ! integer*4, intent(out) :: ierr
+        ! type(PPICLF_t_realNVec), intent(inout) :: tau
+        ! type(PPICLF_t_realNVec), intent(inout) :: tau_hydro
+        ! real*8, intent(in) :: dp, rhop, rhof, rmass, rmu, rpi
+        !
         ! Internal:
         !
       
-        real*8 taux_undist, tauy_undist, tauz_undist
+        ! real*8 taux_undist, tauy_undist, tauz_undist
+        type(PPICLF_t_realNVec) tau_undist
         real*8 rmass_local
 
         !
         ! Code:
         !
-        taux_hydro = 0.0d0
-        tauy_hydro = 0.0d0
-        tauz_hydro = 0.0d0
-        taux_undist = 0.0d0
-        tauy_undist = 0.0d0
-        tauz_undist = 0.0d0
+        ! taux_hydro = 0.0d0
+        ! tauy_hydro = 0.0d0
+        ! tauz_hydro = 0.0d0
+        tau_hydro%vec = 0.0d0
+        ! taux_undist = 0.0d0
+        ! tauy_undist = 0.0d0
+        ! tauz_undist = 0.0d0
+        tau_undist%vec = 0.0d0
 
         if (collisional_flag >= 3) then
-            call Torque_Hydro(i,taux_hydro,tauy_hydro,tauz_hydro)
-            call Torque_Undisturbed(i,taux_undist,tauy_undist,tauz_undist)
+            call Torque_Hydro(particle, interp, tau_hydro, dp, rhop, rhof, rmass, rmu, rpi, ierr)
+            if (ierr .ne. 0) return
+            call Torque_Undisturbed(particle, interp, tau_undist, dp, rhof)
         endif
 
-        taux = taux + taux_hydro + taux_undist
-        tauy = tauy + tauy_hydro + tauy_undist
-        tauz = tauz + tauz_hydro + tauz_undist
+        ! taux = taux + taux_hydro + taux_undist
+        ! tauy = tauy + tauy_hydro + tauy_undist
+        ! tauz = tauz + tauz_hydro + tauz_undist
+        tau = tau + tau_hydro + tau_undist
 
         return
     end procedure ppiclf_user_Torque_driver
@@ -97,13 +111,18 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
     !
     !-----------------------------------------------------------------------
     !
-    subroutine Torque_Hydro(i,taux_hydro,tauy_hydro,tauz_hydro)
+    pure subroutine Torque_Hydro(particle, interp, tau_hydro, dp, rhop, rhof, rmass, rmu, rpi, ierr)
+        type(PPICLF_U_t_particle), intent(inout) :: particle
+            type(ppiclf_u_t_interp), intent(in) :: interp    
+        type(PPICLF_t_realNVec), intent(inout) :: tau_hydro
+        integer*4, intent(inout) :: ierr
+        real*8, intent(in) :: dp, rhop, rhof, rmass, rmu, rpi
         !
         ! Internal:
         !
-        integer*4 i
-        real*8 taux_hydro, tauy_hydro, tauz_hydro
-        real*8 omgrx, omgry, omgrz, omgr_mag
+        ! real*8 omgrx, omgry, omgrz
+        type(PPICLF_t_realNVec) omgr
+        real*8 omgr_mag
         real*8 Ct1, Ct2, Ct3, Ct
         real*8 reyr, beta, rIp, factor
 
@@ -112,10 +131,11 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
         !
         ! Compute relative angular velocity components
         !    and magnitude
-        omgrx = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%X)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%X)}@)
-        omgry = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Y)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Y)}@)
-        omgrz = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Z)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Z)}@)
-        omgr_mag = sqrt(omgrx*omgrx + omgry*omgry + omgrz*omgrz)
+        ! omgrx = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%X)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%X)}@)
+        ! omgry = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Y)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Y)}@)
+        ! omgrz = 0.5d0*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Z)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Z)}@)
+        omgr = (interp%VOR - particle%y%ang_vel) * 0.5d0
+        omgr_mag = nvecMagnitude(omgr) ! sqrt(omgrx*omgrx + omgry*omgry + omgrz*omgrz)
 
         ! Particle rotational Reynolds number
         reyr = rhof*dp*dp*omgr_mag/(4.0d0*rmu)
@@ -143,7 +163,9 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
             Ct2 = 32.1d0
             Ct3 = 0.0d0
         else
-            call ppiclf_exittr('Re rotational too large$', reyr, 0)
+            ! call ppiclf_exittr('Re rotational too large$', reyr, 0)
+            ierr = 1
+            return
         endif
 
         Ct = Ct1/sqrt(reyr) + Ct2/Reyr + Ct3*reyr
@@ -153,9 +175,10 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
         rIp  = rmass*dp*dp/10.0d0
         factor = rIp*60.0d0*Ct*omgr_mag/(64.0d0*rpi*beta)
 
-        taux_hydro = factor*omgrx
-        tauy_hydro = factor*omgry
-        tauz_hydro = factor*omgrz
+        ! taux_hydro = factor*omgrx
+        ! tauy_hydro = factor*omgry
+        ! tauz_hydro = factor*omgrz
+        tau_hydro = omgr * factor
 
 
         return
@@ -173,13 +196,17 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
     !
     !-----------------------------------------------------------------------
     !
-    subroutine Torque_Undisturbed(i,taux_undist,tauy_undist,tauz_undist)
-
+    pure subroutine Torque_Undisturbed(particle, interp, tau_undist, dp, rhof)
+        !
+        ! Input:
+        !
+        type(PPICLF_U_t_particle), intent(in) :: particle
+        type(ppiclf_u_t_interp), intent(in) :: interp
+        type(PPICLF_t_realNVec), intent(inout) :: tau_undist
+        real*8, intent(in) :: dp, rhof
         !
         ! Internal:
         !
-        integer*4 i
-        real*8 taux_undist, tauy_undist, tauz_undist
         real*8 rIf
 
         !
@@ -187,13 +214,14 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Torque
         !
 
         ! Moment of interia with respect to gas
-        rIf = rhof*dp*dp*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)/10.0d0
+        rIf = rhof*dp*dp*(particle%rprop%VOLp)/10.0d0
 
         ! Undisturbed torque component
         ! Written using angular velocity = 0.5*vorticity
-        taux_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%X)}@)
-        tauy_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%Y)}@)
-        tauz_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%Z)}@)
+        ! taux_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%X)}@)
+        ! tauy_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%Y)}@)
+        ! tauz_undist = 0.5d0*rIf*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDO%Z)}@)
+        tau_undist = interp%SDO * rIF * 0.5d0
 
 
         return

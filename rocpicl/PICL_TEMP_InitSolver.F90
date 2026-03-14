@@ -142,10 +142,7 @@ INTEGER :: errorFlag,icg
    INTEGER :: seed(33), isize, CellVertices
 
   
-   REAL(RFREAL) :: ppiclf_rcp_part
-   CHARACTER(12) :: ppiclf_matname
-   COMMON /RFLU_ppiclf_misc01/ ppiclf_rcp_part
-   COMMON /RFLU_ppiclf_misc02/ ppiclf_matname
+  
 
    ! 08/19/24 - Thierry - added for Periodicity - begins here
    INTEGER :: x_per_flag, y_per_flag, z_per_flag, ang_per_flag 

@@ -19,27 +19,27 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
+
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_QS
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: 
+    use ppiclf_m_particledata, only: 
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only: 
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only:
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only:
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)

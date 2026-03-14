@@ -33,6 +33,16 @@ module ppiclf_m_wrapped_types
         type(PPICLF_U_t_feedback) feedback
     end type ppiclf_t_feedback_wrapped
 
+    type ppiclf_t_neighborInfo
+        logical exists ! there was a neighbor found. If this is false, the remaining contents of the object are meaningless
+        integer*4 j ! index of the neighbor. positive for real particles, negative for ghost particles, zero for boundary points
+        
+        ! we have to calculate thse when searching for neighbors, might as well save them and avoid redoing it later
+        ! type(PPICLF_t_realNVec) rPos ! relative position of the neighbor (neighbor%y%pos - particle%y%pos)
+        ! real*8 rDist ! distance between particle and neighbor
+        
+        type(ppiclf_U_t_ghostParticle) neighbor ! neighbor data, always a ghost particle struct, regardless of if it is actually a ghost
+    end type ppiclf_t_neighborInfo
 
     integer, public, save :: ppiclf_t_fluidCell_wrapped_MPIH, ppiclf_t_interp_wrapped_MPIH, ppiclf_t_feedback_wrapped_MPIH
     integer, private, save :: ppiclf_t_fluidCell_MPIH

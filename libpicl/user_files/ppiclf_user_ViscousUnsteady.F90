@@ -15,27 +15,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
     ! particle data
-    use ppiclf_data, only: ppiclf_npart, ppiclf_drudtPlag, ppiclf_drudtMixt, ppiclf_timeBH
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: ppiclf_npart
+    use ppiclf_m_particledata, only: ppiclf_parts
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
-    use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: ppiclf_dt
+    use ppiclf_data, only: 
+    use ppiclf_data, only: 
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only: 
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only: 
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -60,9 +59,10 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
         !
         ! Code:
         !
-        fvux = 0.0d0
-        fvuy = 0.0d0
-        fvuz = 0.0d0
+        ! fvux = 0.0d0
+        ! fvuy = 0.0d0
+        ! fvuz = 0.0d0
+        fvu%vec = 0.0d0
         iT   = 1
         time = 0.0d0
 
@@ -80,15 +80,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
 
                 kernelVU = factor*(A+B)**(-2)
 
-                fvux = fvux + kernelVU*                     &
-                    ( ppiclf_drudtMixt(PPICLF_JX,iT,i) -    &
-                      ppiclf_drudtPlag(PPICLF_JX,iT,i) )
-                fvuy = fvuy + kernelVU*                     &
-                    ( ppiclf_drudtMixt(PPICLF_JY,iT,i) -    &
-                      ppiclf_drudtPlag(PPICLF_JY,iT,i) )
-                fvuz = fvuz + kernelVU*                     &
-                    ( ppiclf_drudtMixt(PPICLF_JZ,iT,i) -    &
-                      ppiclf_drudtPlag(PPICLF_JZ,iT,i) )
+                ! fvux = fvux + kernelVU*                     &
+                !     ( ppiclf_drudtMixt(PPICLF_JX,iT,i) -    &
+                !       ppiclf_drudtPlag(PPICLF_JX,iT,i) )
+                ! fvuy = fvuy + kernelVU*                     &
+                !     ( ppiclf_drudtMixt(PPICLF_JY,iT,i) -    &
+                !       ppiclf_drudtPlag(PPICLF_JY,iT,i) )
+                ! fvuz = fvuz + kernelVU*                     &
+                !     ( ppiclf_drudtMixt(PPICLF_JZ,iT,i) -    &
+                !       ppiclf_drudtPlag(PPICLF_JZ,iT,i) )
+                fvu = fvu + (particle%drudtMixt(iT) - particle%drudtplag(iT)) * kernelVU
             enddo
 
             iT = ppiclf_nTimeBH
@@ -99,15 +100,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
 
             kernelVU = 0.5d0*factor*(A+B)**(-2)
 
-            fvux = fvux + kernelVU*                         &
-                ( ppiclf_drudtMixt(PPICLF_JX,iT,i) -        &
-                  ppiclf_drudtPlag(PPICLF_JX,iT,i) )
-            fvuy = fvuy + kernelVU*                         &
-                ( ppiclf_drudtMixt(PPICLF_JY,iT,i) -        &
-                  ppiclf_drudtPlag(PPICLF_JY,iT,i) )
-            fvuz = fvuz + kernelVU*                         &
-                ( ppiclf_drudtMixt(PPICLF_JZ,iT,i) -        &
-                  ppiclf_drudtPlag(PPICLF_JZ,iT,i) )
+            ! fvux = fvux + kernelVU*                         &
+            !     ( ppiclf_drudtMixt(PPICLF_JX,iT,i) -        &
+            !       ppiclf_drudtPlag(PPICLF_JX,iT,i) )
+            ! fvuy = fvuy + kernelVU*                         &
+            !     ( ppiclf_drudtMixt(PPICLF_JY,iT,i) -        &
+            !       ppiclf_drudtPlag(PPICLF_JY,iT,i) )
+            ! fvuz = fvuz + kernelVU*                         &
+            !     ( ppiclf_drudtMixt(PPICLF_JZ,iT,i) -        &
+            !       ppiclf_drudtPlag(PPICLF_JZ,iT,i) )
+            fvu = fvu + (particle%drudtMixt(iT) - particle%drudtplag(iT)) * kernelVU
         endif
 
 
@@ -135,15 +137,19 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
         !
         ! Code:
         !
+        
+        ! 
         do i=1,ppiclf_npart
             do iT = ppiclf_nUnsteadyData,2,-1
-                ppiclf_drudtMixt(PPICLF_JX,iT,i) = ppiclf_drudtMixt(PPICLF_JX,iT-1,i)
-                ppiclf_drudtMixt(PPICLF_JY,iT,i) = ppiclf_drudtMixt(PPICLF_JY,iT-1,i)
-                ppiclf_drudtMixt(PPICLF_JZ,iT,i) = ppiclf_drudtMixt(PPICLF_JZ,iT-1,i)
+                ! ppiclf_drudtMixt(PPICLF_JX,iT,i) = ppiclf_drudtMixt(PPICLF_JX,iT-1,i)
+                ! ppiclf_drudtMixt(PPICLF_JY,iT,i) = ppiclf_drudtMixt(PPICLF_JY,iT-1,i)
+                ! ppiclf_drudtMixt(PPICLF_JZ,iT,i) = ppiclf_drudtMixt(PPICLF_JZ,iT-1,i)
+                ppiclf_parts(i)%drudtMixt(iT) = ppiclf_parts(i)%drudtMixt(iT - 1)
 
-                ppiclf_drudtPlag(PPICLF_JX,iT,i) = ppiclf_drudtPlag(PPICLF_JX,iT-1,i)
-                ppiclf_drudtPlag(PPICLF_JY,iT,i) = ppiclf_drudtPlag(PPICLF_JY,iT-1,i)
-                ppiclf_drudtPlag(PPICLF_JZ,iT,i) = ppiclf_drudtPlag(PPICLF_JZ,iT-1,i)
+                ! ppiclf_drudtPlag(PPICLF_JX,iT,i) = ppiclf_drudtPlag(PPICLF_JX,iT-1,i)
+                ! ppiclf_drudtPlag(PPICLF_JY,iT,i) = ppiclf_drudtPlag(PPICLF_JY,iT-1,i)
+                ! ppiclf_drudtPlag(PPICLF_JZ,iT,i) = ppiclf_drudtPlag(PPICLF_JZ,iT-1,i)
+                ppiclf_parts(i)%drudtPlag(iT) = ppiclf_parts(i)%drudtPlag(iT - 1)
             enddo
         enddo
 
@@ -175,17 +181,20 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
     !
     module procedure ppiclf_user_UpdatePlag
         real*8 SDrho
-        real*8 ug,vg,wg
-        real*8 up,vp,wp
+        ! real*8 ug,vg,wg
+        type(PPICLF_t_realNVec) ug
+        ! real*8 up,vp,wp
+        type(PPICLF_t_realNVec) up
         real*8 vgradrho
 
         !
         ! Code:
         !
-        SDrho = @{USEPARTICLE(ppiclf_parts(i)%rprop%rhsr)}@                                                      &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%vel%X)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%X)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%vel%Y)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Y)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%vel%Z)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Z)}@
+        ! SDrho = @{USEPARTICLE(ppiclf_parts(i)%rprop%rhsr)}@                                                      &
+        !     + @{USEPARTICLE(ppiclf_parts(i)%y%vel%X)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%X)}@   &
+        !     + @{USEPARTICLE(ppiclf_parts(i)%y%vel%Y)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Y)}@   &
+        !     + @{USEPARTICLE(ppiclf_parts(i)%y%vel%Z)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Z)}@
+        SDrho = interp%rhsr + nvecComponentSum(particle%y%vel * interp%PGC)
 
         ! 03/11/2025 - Thierry - substantial derivative from Rocflu is
         !              weighted by \phi^g.
@@ -196,26 +205,32 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
         SDrho = SDrho / (rphif)
 
         ! 03/23/2025 - TLJ - added extra term involving grad(rhog)
-        vgradrho =  vx*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%X)}@ +    &
-                    vy*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Y)}@ +    &
-                    vz*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Z)}@
+        ! vgradrho =  vx*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%X)}@ +    &
+        !             vy*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Y)}@ +    &
+        !             vz*@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Z)}@
+        vgradrho = nvecComponentSum(v * interp%RHOg)
 
-        ug = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%X)}@
-        vg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Y)}@
-        wg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Z)}@
-        up = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%X)}@
-        vp = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Y)}@
-        wp = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Z)}@
+        ! ug = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%X)}@
+        ! vg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Y)}@
+        ! wg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Z)}@
+        ug = interp%U
+
+        ! up = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%X)}@
+        ! vp = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Y)}@
+        ! wp = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Z)}@
+        up = particle%y%vel
 
         ! D(rhog*ug)/Dt
-        ppiclf_drudtMixt(PPICLF_JX,1,i) = ug*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%X)}@)
-        ppiclf_drudtMixt(PPICLF_JY,1,i) = vg*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Y)}@)
-        ppiclf_drudtMixt(PPICLF_JZ,1,i) = wg*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Z)}@)
+        ! ppiclf_drudtMixt(PPICLF_JX,1,i) = ug*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%X)}@)
+        ! ppiclf_drudtMixt(PPICLF_JY,1,i) = vg*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Y)}@)
+        ! ppiclf_drudtMixt(PPICLF_JZ,1,i) = wg*(SDrho+vgradrho) + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Z)}@)
+        particle%drudtMixt(1) = (ug * (SDrho + vgradrho)) + (interp%SDR * rhof)
 
         ! d(rhog*up)/dt
-        ppiclf_drudtPlag(PPICLF_JX,1,i) = up*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%X)}@
-        ppiclf_drudtPlag(PPICLF_JY,1,i) = vp*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%Y)}@
-        ppiclf_drudtPlag(PPICLF_JZ,1,i) = wp*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%Z)}@
+        ! ppiclf_drudtPlag(PPICLF_JX,1,i) = up*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%X)}@
+        ! ppiclf_drudtPlag(PPICLF_JY,1,i) = vp*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%Y)}@
+        ! ppiclf_drudtPlag(PPICLF_JZ,1,i) = wp*SDrho + rhof*@{USEPARTICLE(ppiclf_parts(i)%ydot%Vel%Z)}@
+        particle%drudtPlag(1) = (up * SDrho) + (particle%ydot%vel * rhof)
 
 
         return
@@ -236,31 +251,31 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
     !
     !-----------------------------------------------------------------------
     !
-    module procedure ppiclf_user_prop2plag
-        integer*4 i,k,ic,iT
-        !
-        ! Code:
-        !
-#if PPICLF_LRP3 != 0
-        do i=1,ppiclf_npart
-            k = 0
-            do ic = 1,3
-                do iT = 1, ppiclf_nUnsteadyData
-                    k = k+1
-                    ppiclf_drudtMixt(ic,iT,i) = ppiclf_rprop3(k,i)
-                enddo
-            enddo
-            do ic = 1,3
-                do iT = 1, ppiclf_nUnsteadyData
-                    k = k+1
-                    ppiclf_drudtPlag(ic,iT,i) = ppiclf_rprop3(k,i)
-                enddo
-            enddo
-        enddo
-#endif
+!     module procedure ppiclf_user_prop2plag
+!         integer*4 i,k,ic,iT
+!         !
+!         ! Code:
+!         !
+! #if PPICLF_LRP3 != 0
+!         do i=1,ppiclf_npart
+!             k = 0
+!             do ic = 1,3
+!                 do iT = 1, ppiclf_nUnsteadyData
+!                     k = k+1
+!                     ppiclf_drudtMixt(ic,iT,i) = ppiclf_rprop3(k,i)
+!                 enddo
+!             enddo
+!             do ic = 1,3
+!                 do iT = 1, ppiclf_nUnsteadyData
+!                     k = k+1
+!                     ppiclf_drudtPlag(ic,iT,i) = ppiclf_rprop3(k,i)
+!                 enddo
+!             enddo
+!         enddo
+! #endif
 
-        return
-    end procedure ppiclf_user_prop2plag
+!         return
+!     end procedure ppiclf_user_prop2plag
     !
     !
     !-----------------------------------------------------------------------
@@ -277,32 +292,32 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_ViscousUnsteady
     !
     !-----------------------------------------------------------------------
     !
-    module procedure ppiclf_user_plag2prop
-        !
-        integer*4 i,k,ic,iT
-        !
-        ! Code:
-        !
-! when rprop3 is 0 len, this function does nothing
-#if PPICLF_LRP3 != 0
-        do i=1,ppiclf_npart
-            k = 0
-            do ic = 1,3
-                do iT = 1, ppiclf_nUnsteadyData
-                    k = k+1
-                    ppiclf_rprop3(k,i) = ppiclf_drudtMixt(ic,iT,i)
-                enddo
-            enddo
-            do ic = 1,3
-                do iT = 1, ppiclf_nUnsteadyData
-                    k = k+1
-                    ppiclf_rprop3(k,i) = ppiclf_drudtPlag(ic,iT,i)
-                enddo
-            enddo
-        enddo
-#endif
+!     module procedure ppiclf_user_plag2prop
+!         !
+!         integer*4 i,k,ic,iT
+!         !
+!         ! Code:
+!         !
+! ! when rprop3 is 0 len, this function does nothing
+! #if PPICLF_LRP3 != 0
+!         do i=1,ppiclf_npart
+!             k = 0
+!             do ic = 1,3
+!                 do iT = 1, ppiclf_nUnsteadyData
+!                     k = k+1
+!                     ppiclf_rprop3(k,i) = ppiclf_drudtMixt(ic,iT,i)
+!                 enddo
+!             enddo
+!             do ic = 1,3
+!                 do iT = 1, ppiclf_nUnsteadyData
+!                     k = k+1
+!                     ppiclf_rprop3(k,i) = ppiclf_drudtPlag(ic,iT,i)
+!                 enddo
+!             enddo
+!         enddo
+! #endif
 
-        return
-    end procedure ppiclf_user_plag2prop
+!         return
+!     end procedure ppiclf_user_plag2prop
 
 end submodule ppiclf_m_user_ForceModels_ViscousUnsteady

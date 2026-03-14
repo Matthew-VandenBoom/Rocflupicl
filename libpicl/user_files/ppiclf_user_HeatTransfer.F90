@@ -14,27 +14,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: 
+    use ppiclf_m_particledata, only:
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only:
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only:
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only:
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only:
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -51,6 +50,15 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     contains
     module procedure ppiclf_user_HT_driver
         !
+        ! Input:
+        ! 
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp  
+        ! integer*4, intent(out) :: ierr
+        ! real*8, intent(inout) :: qq
+        ! real*8, intent(in) :: rkappa, dp, rep, rpr, rmachp, rphif
+
+        !
         ! Internal:
         !
         real*8 Nuss, Q_conv
@@ -58,24 +66,26 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
         !
         ! Code:
         !
-        Q_conv = rpi*rkappa*dp*((@{USEPARTICLE(ppiclf_parts(i)%rprop%JT)}@) - (@{USEPARTICLE(ppiclf_parts(i)%y%T)}@) )
+        Q_conv = rpi*rkappa*dp*((interp%FT) - (particle%y%T) )
 
         Nuss = 0.0d0
         if (heattransfer_flag == 1) then
-            call HTModel_Stokes(i,Nuss)
+            call HTModel_Stokes(Nuss)
         elseif (heattransfer_flag == 2) then
-            call HTModel_RM(i,Nuss)
+            call HTModel_RM(Nuss, rep, rpr)
         elseif (heattransfer_flag == 3) then
-            call HTModel_Gunn(i,Nuss)
+            call HTModel_Gunn(Nuss, rphif, rep, rpr)
         elseif (heattransfer_flag == 4) then
-            call HTModel_Fox(i,Nuss)
+            call HTModel_Fox(Nuss, rmachp, rep, rpr)
         else
-            call ppiclf_exittr('Unknown heat transfer model$', 0.0d0, 0)
+            ! call ppiclf_exittr('Unknown heat transfer model$', 0.0d0, 0)
+            ierr = 1
+            return
         endif
 
         qq = qq + Q_conv*Nuss
 
-
+        ierr = 0
         return
     end procedure ppiclf_user_HT_driver
     !
@@ -91,12 +101,11 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     !
     !-----------------------------------------------------------------------
     !
-    subroutine HTModel_Stokes(i,Nuss)
+    pure subroutine HTModel_Stokes(Nuss)
         !
-        ! Internal:
+        ! Input:
         !
-        integer*4 i
-        real*8 Nuss
+        real*8, intent(out) :: Nuss
         !
         ! Code:
         !
@@ -127,12 +136,12 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     !
     !-----------------------------------------------------------------------
     !
-    subroutine HTModel_RM(i,Nuss)
+    pure subroutine HTModel_RM(Nuss, rep, rpr)
         !
-        ! Internal:
+        ! Input:
         !
-        integer*4 i
-        real*8 Nuss
+        real*8, intent(out) :: Nuss
+        real*8, intent(in) :: rep, rpr
         !
         ! Code:
         !
@@ -169,13 +178,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     !
     !-----------------------------------------------------------------------
     !
-    subroutine HTModel_Gunn(i,Nuss)
+    pure subroutine HTModel_Gunn(Nuss, rphif, rep, rpr)
+        !
+        ! Input:
+        !
+        real*8, intent(inout) :: Nuss
+        real*8, intent(in) :: rphif, rep, rpr
         !
         ! Internal:
         !
-        integer*4 i
         real*8 vg
-        real*8 Nuss
         !
         ! Code:
         !
@@ -215,12 +227,13 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_HeatTransfer
     !
     !-----------------------------------------------------------------------
     !
-    subroutine HTModel_Fox(i,Nuss)
+    pure subroutine HTModel_Fox(Nuss, rmachp, rep, rpr)
+        real*8, intent(inout) :: Nuss
+        real*8, intent(in) :: rmachp, rep, rpr
         !
         ! Internal:
         !
-        integer*4 i
-        real*8 Nuss
+
         !
         ! Code:
         !

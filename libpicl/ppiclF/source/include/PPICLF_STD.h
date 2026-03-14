@@ -18,9 +18,9 @@
 #undef PPICLF_LRP2
 #endif
 
-#ifdef PPICLF_VU
-! #define PPICLF_VU 0
-#undef PPICLF_VU
+#ifndef PPICLF_VU
+#define PPICLF_VU 0
+! #undef PPICLF_VU
 #endif
 
 #ifdef PPICLF_LRP3

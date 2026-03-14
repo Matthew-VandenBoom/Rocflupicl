@@ -34,9 +34,10 @@ SOURCE_ROOT_GSLIB_OBJ=$(SOURCE_ROOT_GSLIB)/gslib/src
 GSLIB_IFLAGS+=-I$(SOURCE_ROOT_GSLIB)/include
 
 SRCUSR =	$(SOURCE_ROOT_USER)/ppiclf_user_particle.F90 \
+			$(SOURCE_ROOT_USER)/ppiclf_user_random.F90 \
             $(SOURCE_ROOT_USER)/ppiclf_user_MapProjPart.f90    \
-			$(SOURCE_ROOT_USER)/ppiclf_m_user_data.f90 \
-			$(SOURCE_ROOT_USER)/ppiclf_m_user_RFLUdata.f90 \
+			$(SOURCE_ROOT_USER)/ppiclf_m_user_data.F90 \
+			$(SOURCE_ROOT_USER)/ppiclf_m_user_RFLUdata.F90 \
 			$(SOURCE_ROOT_USER)/ppiclf_user_SetYdot.F90		\
             $(SOURCE_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.F90     \
             $(SOURCE_ROOT_USER)/ppiclf_user_InitZero.F90     \
@@ -84,6 +85,7 @@ PRE = $(SOURCE_ROOT_PPICLF)/PPICLF_SOLN.h     \
       $(SOURCE_ROOT_PPICLF)/PPICLF_PERFORMANCE.h
 POS = $(SOURCE_ROOT_PPICLF)/PPICLF
 
+.PHONY: default, test, testprog
 
 default: libppicl
 test: $(BUILD_ROOT_PPICLF)/ppiclf_m_transfers.o
@@ -92,8 +94,8 @@ test: $(BUILD_ROOT_PPICLF)/ppiclf_m_transfers.o
 testprog: $(BUILD_ROOT_PPICLF)/testprog
 	@$(BUILD_ROOT_PPICLF)/testprog
 
-$(BUILD_ROOT_PPICLF)/testprog: $(BUILD_ROOT_USER)/ppiclf_user_particle.o $(SOURCE_ROOT_PPICLF)/testfile.F90
-	$(FC) $(SOURCE_ROOT_PPICLF)/testfile.F90 -o $@ $(PPICLF_FFLAGS) $(OBJ) $(OBJUSR)
+$(BUILD_ROOT_PPICLF)/testprog: $(OBJ) $(SOURCE_ROOT_PPICLF)/testfile.F90
+	$(FC) $(SOURCE_ROOT_PPICLF)/testfile.F90 -o $@ $(PPICLF_FFLAGS) $(BUILD_ROOT_PPICLF)/ppiclf_m_types.o $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 
 # default: $(BUILD_ROOT_USER)/ppiclf_user_imp.o
 
@@ -177,6 +179,8 @@ $(BUILD_ROOT_USER)/ppiclf_user_AddedMass.o: $(BUILD_ROOT_USER)/Added_Mass/ppiclf
 $(BUILD_ROOT_USER)/ppiclf_user_particle.o:	$(BUILD_ROOT_PPICLF)/ppiclf_m_types.o
 $(BUILD_ROOT_USER)/ppiclf_user_particle.o:	$(BUILD_ROOT_PPICLF)/ppiclf_op.o
 
+$(BUILD_ROOT_USER)/ppiclf_user_subbinMap.o: $(BUILD_ROOT_USER)/ppiclf_m_user_data.o
+
 
 $(BUILD_ROOT_PPICLF)/%.o : $(SOURCE_ROOT_PPICLF)/%.F90
 	@echo called standard build on $<
@@ -211,15 +215,16 @@ $(BUILD_ROOT_PPICLF)/libppiclF.a: $(BUILD_ROOT_PPICLF)/libppiclcore.a $(OBJUSR)
 
 
 $(BUILD_ROOT_USER)/%.o : $(SOURCE_ROOT_USER)/%.F90
+	@echo called standard build on $<
 	@mkdir -vp $(BUILD_ROOT_USER)
 	@$(FC) $< -c -o $@ $(PPICLF_USER_FFLAGS)
 
 
 
-$(BUILD_ROOT_PPICLF)/%.o : $(BUILD_ROOT_USER)/%.f90
-	@mkdir -vp $(BUILD_ROOT_USER)
-	@$(FC) $< -E -o $(BUILD_ROOT_USER)/$*.i $(PPICLF_FFLAGS)
-	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
+# $(BUILD_ROOT_PPICLF)/%.o : $(BUILD_ROOT_USER)/%.f90
+# 	@mkdir -vp $(BUILD_ROOT_USER)
+# 	@$(FC) $< -E -o $(BUILD_ROOT_USER)/$*.i $(PPICLF_FFLAGS)
+# 	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
 
 
 

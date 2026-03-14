@@ -12,27 +12,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only:
+    use ppiclf_m_particledata, only: 
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only: ppiclf_dt
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only: 
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only: 
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -40,8 +39,9 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
 
 
     use ppiclf_m_user_data
+    use ppiclf_user_particle
 
-    use ppiclf_op, only: ppiclf_exittr
+    use ppiclf_op, only:
     implicit none
 
 
@@ -49,20 +49,31 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
 
 
     module procedure ppiclf_user_BR_driver
+        !
+        ! Input:
+        ! 
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp
+        ! integer*4, intent(in) :: iStage, burnrate_model
+        ! integer*4, intent(out) :: ierr
+        ! real*8, intent(inout) :: qq
+        ! real*8, intent(inout) :: mdot_me, mdot_ox
+        ! real*8, intent(in) :: rpi, vmag
 
         !
         ! Code:
         !
         if (burnrate_model == 1) then
-            call AL_CombModel(i,iStage,qq,mdot_me,mdot_ox)
+            call AL_CombModel(particle, interp, iStage,qq,mdot_me,mdot_ox, rpi, vmag, ierr)
         elseif (burnrate_model == 2) then
             !call Carbon_CombModel(i,iStage,qq,mdot_me,mdot_ox)
         elseif (burnrate_model == 3) then
             !call Mg_CombModel(i,iStage,qq,mdot_me,mdot_ox)
         else
-            call ppiclf_exittr('Unknown combustion model$', 0.0d0, 0)
+            ! call ppiclf_exittr('Unknown combustion model$', 0.0d0, 0)
+            ierr = 1
+            return
         endif
-
 
         return
     end procedure ppiclf_user_BR_driver
@@ -76,12 +87,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
     !
     !-----------------------------------------------------------------------
     !
-    subroutine AL_CombModel(i,iStage,qq,mdot_me,mdot_ox)
+    pure subroutine AL_CombModel(particle, interp, iStage,qq,mdot_me,mdot_ox, rpi, vmag, ierr)
     
         ! Parameters
-        integer*4 i,iStage
-        real*8 qq
-        real*8 mdot_me, mdot_ox
+        type(PPICLF_U_t_particle), intent(inout) :: particle
+        type(ppiclf_u_t_interp), intent(in) :: interp
+        integer*4, intent(in) :: iStage
+        real*8, intent(inout) :: qq
+        real*8, intent(inout) :: mdot_me, mdot_ox
+        real*8, intent(in) :: rpi, vmag
+        integer*4, intent(inout) :: ierr
         !
         ! Internal:
         !
@@ -110,16 +125,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
         !     PARTICLE PROPERTIES
         !===============================================================
 
-        T_part = @{USEPARTICLE(ppiclf_parts(i)%y%T)}@
-        Pres   = @{USEPARTICLE(ppiclf_parts(i)%rprop%Pf)}@ ! PPICLF_RPROP(PPICLF_R_JP,i)
+        T_part = particle%y%T
+        Pres   = interp%P ! PPICLF_RPROP(PPICLF_R_JP,i)
 
-        m_me = @{USEPARTICLE(ppiclf_parts(i)%y%METAL)}@
-        m_ox = @{USEPARTICLE(ppiclf_parts(i)%y%OXIDE)}@
+        m_me = particle%y%METAL
+        m_ox = particle%y%OXIDE
 
-        Dia    = @{USEPARTICLE(ppiclf_parts(i)%rprop%DP)}@
-        V_p    = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@
+        Dia    = particle%rprop%DP
+        V_p    = particle%rprop%VOLP
 
-        D0 = @{USEPARTICLE(ppiclf_parts(i)%rprop%IDP)}@
+        D0 = particle%rprop%IDP
 
         V_me = m_me / rho_me
         psi_me = V_me / V_p
@@ -214,14 +229,14 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
         !----Updating PPICLF_RPOP values---------------------------------
 
         ! TEMP FIX
-        if (Dia .gt. @{USEPARTICLE(ppiclf_parts(i)%rprop%IDP)}@) then
+        if (Dia .gt. particle%rprop%IDP) then
             !         print*,'Warning Dia too big',
             !     >    i, PPICLF_RPROP(PPICLF_R_JIDP,i),Dia
-            Dia = @{USEPARTICLE(ppiclf_parts(i)%rprop%IDP)}@
+            Dia = particle%rprop%IDP
         endif
-        @{USEPARTICLE(ppiclf_parts(i)%rprop%DP)}@   = Dia
-        @{USEPARTICLE(ppiclf_parts(i)%rprop%RHOP)}@ = rho_p
-        @{USEPARTICLE(ppiclf_parts(i)%rprop%volp)}@ = vol_avg
+        particle%rprop%DP   = Dia
+        particle%rprop%RHOP = rho_p
+        particle%rprop%volp = vol_avg
 
         !===============================================================
         !     COMBUSTION HEAT TRANSFER
@@ -316,7 +331,7 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
 
         !-------------Check if particle is burning-----------------------
 
-        if ((T_part .ge. T_ign .or. @{USEPARTICLE(ppiclf_parts(i)%rprop%BRNT)}@ .gt. 0.0) .and. Dp_me .gt. 5.0d-6) then
+        if ((T_part .ge. T_ign .or. particle%rprop%BRNT .gt. 0.0) .and. Dp_me .gt. 5.0d-6) then
 
             !Burn law
             mdot_me = C*rho_me*(Dia**1.2d0) * xi_eff*(T_part**0.2d0) * (pres**0.1d0) * psi_me
@@ -324,12 +339,12 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_BurnRate
             mdot_ox = 0.25d0 * rpi * Dia**2.0d0 * abs(vmag) * 0.25d0 * Cs
 
             !update total burn time
-            @{USEPARTICLE(ppiclf_parts(i)%rprop%BRNT)}@  = @{USEPARTICLE(ppiclf_parts(i)%rprop%BRNT)}@ + ppiclf_dt
+            particle%rprop%BRNT  = particle%rprop%BRNT + ppiclf_dt
         else
             mdot_me = 0.0d0
             mdot_ox = 0.0d0
         endif
-
+        ierr = 0
         return
     end subroutine AL_CombModel
 

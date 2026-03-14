@@ -1,3 +1,4 @@
+#include <PPICLF_STD.h>
 #define PPICLF_N_PREV_SOLS 1
 
 module PPICLF_user_particle
@@ -27,7 +28,7 @@ module PPICLF_user_particle
         real*8                                  :: JDPi     ! no longer used
         real*8                                  :: JDPe     ! no longer used
         real*8                                  :: JSPL     ! = constant 1
-        real*8                                  :: JSPT     ! no longer used
+        real*8                                  :: JSPT     ! no longer used. ! Might have been repurposed to something else and is actually used?
         type(PPICLF_t_realNVec)                 :: FLUCTF   ! Fluctuating QS force
         type(PPICLF_t_realNVec)                 :: WDOT     ! Relative acceleration
         real*8                                  :: IDp      ! Initial particle diameter
@@ -74,21 +75,21 @@ module PPICLF_user_particle
         real*8                                  :: JPHIPW
         real*8                                  :: JPHIPT
         !--- Reynolds Subgrid Stress Tensor (RSG)
-        real*8                                  :: JRSG(3,3)
-        ! real*8                                  :: JRSG11
-        ! real*8                                  :: JRSG12
-        ! real*8                                  :: JRSG13
-        ! real*8                                  :: JRSG21
-        ! real*8                                  :: JRSG22
-        ! real*8                                  :: JRSG23
-        ! real*8                                  :: JRSG31
-        ! real*8                                  :: JRSG32
-        ! real*8                                  :: JRSG33
+        ! real*8                                  :: JRSG(3,3)
+        real*8                                  :: JRSG11
+        real*8                                  :: JRSG12
+        real*8                                  :: JRSG13
+        real*8                                  :: JRSG21
+        real*8                                  :: JRSG22
+        real*8                                  :: JRSG23
+        real*8                                  :: JRSG31
+        real*8                                  :: JRSG32
+        real*8                                  :: JRSG33
         !--- Pseudo Turbulent Kinetic Energy
-        real*8                                  :: JTSG(3)
-        ! real*8                                  :: JTSG1
-        ! real*8                                  :: JTSG2
-        ! real*8                                  :: JTSG3
+        ! real*8                                  :: JTSG(3)
+        real*8                                  :: JTSG1
+        real*8                                  :: JTSG2
+        real*8                                  :: JTSG3
     end type PPICLF_U_t_feedback
 
     type PPICLF_t_iprop
@@ -121,13 +122,16 @@ module PPICLF_user_particle
         type(PPICLF_t_rprop)                    :: rprop
         type(PPICLF_t_iprop)                    :: iprop
 
-#ifdef PPICLF_VU
-        type(PPICLF_t_DRUDTPLAG)                :: DRUDTPLAG(PPICLF_VU)
-        type(PPICLF_t_DRUDTMIXT)                :: DRUDTMIXT(PPICLF_VU)
-#endif
+! #ifdef PPICLF_VU
+!         type(PPICLF_t_DRUDTPLAG)                :: DRUDTPLAG(PPICLF_VU)
+!         type(PPICLF_t_DRUDTMIXT)                :: DRUDTMIXT(PPICLF_VU)
+! #endif
+        type(PPICLF_t_realNVec)                 :: drudtPlag(PPICLF_VU)
+        type(PPICLF_t_realNVec)                 :: drudtMixt(PPICLF_VU)
 
         ! type(PPICLF_t_interp), pointer          :: interp
         ! type(PPICLF_t_feedback), pointer        :: feedback
+        integer*8                               :: rngState
     end type PPICLF_U_t_particle
 
     type PPICLF_U_t_ghostParticle
@@ -580,7 +584,10 @@ module PPICLF_user_particle
 
         
 #endif
-
+        ! 1 int8 (rngState)
+        oldtypes(i) = MPI_INTEGER8
+        blockcounts(i) = 1
+        offsets(i) = offsets(i - 1) + blockcounts(i - 1) * prev_extent
         ! ! find a type with the same extent as a pointer
         ! fakePointerType = -1
         ! extent_pointer = STORAGE_SIZE(testPointer) / 8

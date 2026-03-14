@@ -12,27 +12,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: 
+    use ppiclf_m_particledata, only: 
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only: ppiclf_dt
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only: 
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only: 
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -48,20 +47,27 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
 
     contains
     module procedure ppiclf_user_Lift_driver
-
+        !
+        ! Input:
+        !
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp    
+        ! integer*4, intent(in) :: iStage
+        ! type(PPICLF_t_realNVec), intent(inout) :: lift
+        ! integer*4, intent(out) :: ierr
+        ! type(PPICLF_t_realNVec), intent(in) :: v
+        ! real*8, intent(in) :: vmag, dp, rep, rhof, rmu, rnu
         !
         ! Code:
         !
-        liftx = 0.0d0
-        lifty = 0.0d0
-        liftz = 0.0d0
+        lift%vec = 0.0d0
 
         if (collisional_flag >= 4) then
-            call Lift_Saffman(i,liftx,lifty,liftz)
-            call Lift_Magnus (i,liftx,lifty,liftz)
+            call Lift_Saffman(particle, interp, lift, v, vmag, dp, rep, rhof, rmu, rnu)
+            call Lift_Magnus (particle, interp, lift, v, vmag, dp, rep, rhof, rmu)
         endif
 
-
+        ierr = 0
         return
     end procedure ppiclf_user_Lift_driver
     !
@@ -84,20 +90,28 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
     !
     !-----------------------------------------------------------------------
     !
-    subroutine Lift_Saffman(i,liftx,lifty,liftz)
+    pure subroutine Lift_Saffman(particle, interp, lift, v, vmag, dp, rep, rhof, rmu, rnu)
         !
         ! Parameters
         !
-        integer*4 i
-        real*8 liftx, lifty, liftz
+        type(PPICLF_U_t_particle), intent(inout) :: particle
+        type(ppiclf_u_t_interp), intent(in) :: interp    
+        type(PPICLF_t_realNVec), intent(inout) :: lift
+        type(PPICLF_t_realNVec), intent(in) :: v
+        real*8, intent(in) :: vmag, dp, rep, rhof, rmu, rnu
+
         !
         ! Internal:
         !
-        real*8 omgx, omgy, omgz, omg_mag, omg_star
+        ! real*8 omgx, omgy, omgz
+        type(PPICLF_t_realNVec) omg
+        real*8 omg_mag, omg_star
         real*8 epi, Jepi
         real*8 d1, d2, d3
         real*8 factor
-        real*8 elx, ely, elz, elm, ielm
+        ! real*8 elx, ely, elz
+        type(PPICLF_t_realNVec) el
+        real*8 elm, ielm
 
         !
         ! Code:
@@ -105,10 +119,11 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
         if (vmag .lt. 1.d-8) return
 
         ! Compute gas-phase vorticity components and magnitude
-        omgx = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%X)}@
-        omgy = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Y)}@
-        omgz = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOR%Z)}@
-        omg_mag = sqrt(omgx*omgx + omgy*omgy + omgz*omgz)
+        ! omgx = @{USEPARTICLE(particle%rprop%VOR%X)}@
+        ! omgy = @{USEPARTICLE(particle%rprop%VOR%Y)}@
+        ! omgz = @{USEPARTICLE(particle%rprop%VOR%Z)}@
+        omg = interp%VOR
+        omg_mag = nvecMagnitude(omg) ! sqrt(omgx*omgx + omgy*omgy + omgz*omgz)
 
         ! Compute Mei correction
         omg_star = omg_mag*dp/vmag
@@ -121,16 +136,21 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
         factor = 1.615d0*rmu*(dp*dp)*vmag*sqrt(omg_mag/rnu)
 
         ! Compute lift components
-        elx = vy*omgz - vz*omgy
-        ely = vz*omgx - vx*omgz
-        elz = vx*omgy - vy*omgx
-        elm = sqrt(elx*elx + ely*ely +elz*elz)
+        ! elx = vy*omgz - vz*omgy
+        ! ely = vz*omgx - vx*omgz
+        ! elz = vx*omgy - vy*omgx
+        el%vec(1) = v%vec(2)*omg%vec(3) - v%vec(3)*omg%vec(2)
+        el%vec(2) = v%vec(3)*omg%vec(1) - v%vec(1)*omg%vec(3)
+        el%vec(3) = v%vec(1)*omg%vec(2) - v%vec(2)*omg%vec(1)
+
+        elm = nvecMagnitude(el) ! sqrt(elx*elx + ely*ely +elz*elz)
         elm = max(1.0d-20,elm)
         ielm = 1.0d0/elm
 
-        liftx = liftx + factor*Jepi*elx*ielm
-        lifty = lifty + factor*Jepi*ely*ielm
-        liftz = liftz + factor*Jepi*elz*ielm
+        ! liftx = liftx + factor*Jepi*elx*ielm
+        ! lifty = lifty + factor*Jepi*ely*ielm
+        ! liftz = liftz + factor*Jepi*elz*ielm
+        lift = lift + el*(factor*Jepi*ielm)
 
 
         return
@@ -154,31 +174,38 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
     !      
     !-----------------------------------------------------------------------
     !
-    subroutine Lift_Magnus(i,liftx,lifty,liftz)
+    pure subroutine Lift_Magnus(particle, interp, lift, v, vmag, dp, rep, rhof, rmu)
         !
         ! Parameters
         !
-        integer*4 i
-        real*8 liftx, lifty, liftz
+        type(PPICLF_U_t_particle), intent(inout) :: particle
+        type(ppiclf_u_t_interp), intent(in) :: interp    
+        type(PPICLF_t_realNVec), intent(inout) :: lift
+        real*8, intent(in) :: vmag, dp, rep, rhof, rmu
+        type(PPICLF_t_realNVec), intent(in) :: v
         !
         ! Internal:
         !
-        real*8 omgx, omgy, omgz, omg_mag, omg_star
+        ! real*8 omgx, omgy, omgz
+        type(PPICLF_t_realNVec) omg
+        real*8 omg_mag, omg_star
         real*8 epi, CL
         real*8 d1
         real*8 factor
-        real*8 elx, ely, elz
+        ! real*8 elx, ely, elz
+        type(PPICLF_t_realNVec) el
 
         !
         ! Code:
-            !
+        !
         if (vmag .lt. 1.d-8) return
 
         ! Compute particle angular velocity
-        omgx = @{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%X)}@
-        omgy = @{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Y)}@
-        omgz = @{USEPARTICLE(ppiclf_parts(i)%y%ang_vel%Z)}@
-        omg_mag = sqrt(omgx*omgx + omgy*omgy + omgz*omgz)
+        ! omgx = @{USEPARTICLE(particle%y%ang_vel%X)}@
+        ! omgy = @{USEPARTICLE(particle%y%ang_vel%Y)}@
+        ! omgz = @{USEPARTICLE(particle%y%ang_vel%Z)}@
+        omg = particle%y%ang_vel
+        omg_mag = nvecMagnitude(omg) ! sqrt(omgx*omgx + omgy*omgy + omgz*omgz)
 
         ! Correction to lift
         omg_star = omg_mag*dp/vmag
@@ -189,14 +216,17 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Lift
         factor = 0.125d0*dp*dp*dp*rhof
 
         ! Compute lift components
-        elx = vy*omgz - vz*omgy
-        ely = vz*omgx - vx*omgz
-        elz = vx*omgy - vy*omgx
+        ! elx = vy*omgz - vz*omgy
+        ! ely = vz*omgx - vx*omgz
+        ! elz = vx*omgy - vy*omgx
+        el%vec(1) = v%vec(2)*omg%vec(3) - v%vec(3)*omg%vec(2)
+        el%vec(2) = v%vec(3)*omg%vec(1) - v%vec(1)*omg%vec(3)
+        el%vec(3) = v%vec(1)*omg%vec(2) - v%vec(2)*omg%vec(1)
 
-        liftx = liftx + factor*CL*elx
-        lifty = lifty + factor*CL*ely
-        liftz = liftz + factor*CL*elz
-
+        ! liftx = liftx + factor*CL*elx
+        ! lifty = lifty + factor*CL*ely
+        ! liftz = liftz + factor*CL*elz
+        lift = lift + (el*(factor*CL))
 
         return    
     end subroutine Lift_Magnus

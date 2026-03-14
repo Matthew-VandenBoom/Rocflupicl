@@ -51,7 +51,7 @@
 !
 ! parallel added mass
 module ppiclf_user_AM_functions
-
+    use ppiclf_m_types
     implicit none
     contains
 
@@ -540,12 +540,13 @@ module ppiclf_user_AM_functions
     ! rad = particle radius
     ! R = resistance matrix (output)
 
-    subroutine resistance_pair(x, y, z, alpha, rad, R)
+    subroutine resistance_pair(relPos, alpha, rad, R)
        
         ! input: x, y, z of second particle relative to the second particle
         ! x = x2 - x1, etc.
         ! rad = particle radius (monodisperse)
-        real*8 x, y, z, alpha, rad
+        type(PPICLF_t_realNVec) relPos
+        real*8 alpha, rad
        
         ! output: resistance matrix
         real*8 R(6, 6)
@@ -559,10 +560,10 @@ module ppiclf_user_AM_functions
         ! real*8 B11_11, B11_22, B12_11, B12_22
        
         ! get rotation matrix Q
-        call rotation_matrix(x, y, z, Q)
+        call rotation_matrix(relPos%vec(1), relPos%vec(2), relPos%vec(3), Q)
         
         ! normalize the distance by the particle radius
-        dist = sqrt(x*x + y*y + z*z) / rad 
+        dist = nvecMagnitude(relPos) / rad 
         
         ! initially set coefficients to 0
         B11(1:3, 1:3) = 0.0

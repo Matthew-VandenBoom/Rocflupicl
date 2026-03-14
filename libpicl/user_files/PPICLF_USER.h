@@ -10,3 +10,4 @@
 ! maximum number of triangular patch boundaries
 #define PPICLF_LWALL 2000
 
+#define PPICLF_VU 2

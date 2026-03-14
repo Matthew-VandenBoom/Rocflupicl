@@ -8,16 +8,15 @@ module ppiclf_m_user_data
     
 
     ! COMMON Name: RFLU_user
-    real*8 rpi,rmu,rkappa,rmass,vmag,rhof,dp,rep,rphip,             &
-        rphif,asndf,rmachp,rhop,rhoMixt,reyL,rnu,fac,               &
-        vx,vy,vz,                                                   &
-        rcp_part,rpr,                                               &
-        phi, mp, re, rem
+    ! moved into ppiclf_user_YdotParticle, we need a separate copy of these for every 
+    ! call of YdotParticle for GPU
+    
     !
     ! For misc values
     !
     ! COMMON Name: ppiclf_misc01
     real*8, parameter ::  OneThird = 1.0d0/3.0d0
+    real*8, parameter :: rpi        = acos(-1.0d0)
 
  
 
@@ -25,12 +24,7 @@ module ppiclf_m_user_data
     ! For ppiclf_user_Fluctuations.f
     !
     ! COMMON Name: user_flcut01, user_fluct02, user_fluct03
-    integer*4 icpmean
-    real*8 upmean, vpmean, wpmean, phipmean
-    real*8 u2pmean, v2pmean, w2pmean
-
-
-    real*8 UnifRnd(6), Rsg(3,3), T_par(3)
+    
 
 
     !
@@ -54,14 +48,34 @@ module ppiclf_m_user_data
     ! For ppiclf_user_AddedMass.f
     !
     ! COMMON Name: user_AddedMass01, user_AddedMass02
-    integer*4 nneighbors
-    real*8 Fam(3), FamUnary(3), FamBinary(3),Wdot_neighbor_mean(3), R_pair(6,6)
-
 
     !
     ! For ppiclf_solve_InitAngularPeriodic
     !
         
     ! MOVED TO ppiclf_data.f90
+
+    ! From ppiclf_user_SetYdot
+    INTEGER*4, allocatable, target :: SBin_map(:,:)
+    INTEGER*4, allocatable, target :: SBin_counter(:)
+    INTEGER*4 i_Bin(3), n_SBin(3), tot_SBin
+
+    ! Finite Diff Material derivative Variables
+    integer*4 nstage, istage
+    integer*4 icallb
+    save      icallb
+    data      icallb /0/
+    integer*4 idebug
+    save      idebug
+    data      idebug /0/
+
+    ! Print Data to file
+    LOGICAL I_EXIST 
+    Character(LEN=25) str 
+    integer*4 f_dump
+    save      f_dump  
+    data      f_dump /1/
+
+    logical exist_file
 
 end module ppiclf_m_user_data

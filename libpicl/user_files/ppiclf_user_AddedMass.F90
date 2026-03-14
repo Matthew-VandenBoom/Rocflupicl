@@ -13,27 +13,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: 
+    use ppiclf_m_particledata, only:
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
-    use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: ppiclf_nndist
+    use ppiclf_data, only: 
+    use ppiclf_data, only: 
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid, ppiclf_np
+    use ppiclf_data, only: 
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx
+    use ppiclf_data, only:
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only:
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -54,7 +53,9 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
     module procedure ppiclf_user_AM_Parmar
         real*8 rcd_am
         real*8 SDrho
-        real*8 ug,vg,wg,vgradrho
+        ! real*8 ug,vg,wg,
+        type(PPICLF_t_realNVec) ug
+        real*8 vgradrho
         real*8 famx_Ling
         real*8 famx_Brad
 
@@ -78,15 +79,15 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
         ! Adopting the volume fraction correction from Beguin & Etienne
         ! (2016).
         rcd_am = rcd_am*(1.0+0.68*rphip**2)
-        rmass_add = rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)*rcd_am
+        rmass_add = rhof*(particle%rprop%VOLP)*rcd_am
 
         !NEW Added mass, using how rocflu does it
         !1st Derivative, substantial how rocflu does it
-        SDrho = @{USEPARTICLE(ppiclf_parts(i)%rprop%RHSR)}@                                             &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%X)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%X)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Y)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Y)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Z)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Z)}@
-
+        ! SDrho = @{USEPARTICLE(particle%rprop%RHSR)}@                                             &
+        !     + @{USEPARTICLE(particle%y%Vel%X)}@ * @{USEPARTICLE(particle%rprop%PGC%X)}@   &
+        !     + @{USEPARTICLE(particle%y%Vel%Y)}@ * @{USEPARTICLE(particle%rprop%PGC%Y)}@   &
+        !     + @{USEPARTICLE(particle%y%Vel%Z)}@ * @{USEPARTICLE(particle%rprop%PGC%Z)}@
+        SDrho = interp%RHSR + nvecComponentSum(particle%y%vel * interp%pgc)
 
         ! 03/11/2025 - Thierry - substantial derivative from Rocflu is 
         !              weighted by \phi^g.
@@ -97,19 +98,23 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
         SDrho = SDrho / (rphif) 
 
         ! 03/23/2025 - TLJ - added extra term involving grad(rhog)
-        vgradrho =  vx*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%X)}@) + &
-                    vy*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Y)}@) + &
-                    vz*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Z)}@)
+        ! vgradrho =  vx*(@{USEPARTICLE(particle%rprop%RHOG%X)}@) + &
+        !             vy*(@{USEPARTICLE(particle%rprop%RHOG%Y)}@) + &
+        !             vz*(@{USEPARTICLE(particle%rprop%RHOG%Z)}@)
+        vgradrho = nvecComponentSum(v * interp%rhog)
 
-        ug = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%X)}@
-        vg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Y)}@
-        wg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Z)}@
+        ! ug = @{USEPARTICLE(particle%rprop%U%X)}@
+        ! vg = @{USEPARTICLE(particle%rprop%U%Y)}@
+        ! wg = @{USEPARTICLE(particle%rprop%U%Z)}@
+        ug = interp%U
 
-        famx = rcd_am*@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@ * (vx*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%X)}@) + ug*vgradrho)
+        ! famx = rcd_am*@{USEPARTICLE(particle%rprop%VOLP)}@ * (vx*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%X)}@) + ug*vgradrho)
 
-        famy = rcd_am*@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@ * (vy*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Y)}@) + vg*vgradrho)
+        ! famy = rcd_am*@{USEPARTICLE(particle%rprop%VOLP)}@ * (vy*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%Y)}@) + vg*vgradrho)
 
-        famz = rcd_am*@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@ * (vz*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Z)}@) + wg*vgradrho)
+        ! famz = rcd_am*@{USEPARTICLE(particle%rprop%VOLP)}@ * (vz*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%Z)}@) + wg*vgradrho)
+
+        fam = (v*SDrho + interp%SDR * rhof + ug * vgradrho) * rcd_am * particle%rprop%volp
 
 
         ! if (1==2) then
@@ -192,7 +197,9 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
         real*8 rad
         real*8 rcd_am
         real*8 SDrho
-        real*8 ug,vg,wg,vgradrho
+        ! real*8 ug,vg,wg,
+        type(PPICLF_t_realNVec) ug
+        real*8 vgradrho
 
         !
         ! Code:
@@ -215,76 +222,83 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
         !    not the unary term
         !rcd_am = rcd_am*(1.0+2.0*rphip)
 
-        rmass_add = rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)*rcd_am
+        rmass_add = rhof*particle%rprop%VOLP*rcd_am
 
         !NEW Added mass, using how rocflu does it
         !1st Derivative, substantial how rocflu does it
-        SDrho = @{USEPARTICLE(ppiclf_parts(i)%rprop%RHSR)}@                                             &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%X)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%X)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Y)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Y)}@   &
-            + @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Z)}@ * @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Z)}@
+        ! SDrho = @{USEPARTICLE(particle%rprop%RHSR)}@                                             &
+        !     + @{USEPARTICLE(particle%y%Vel%X)}@ * @{USEPARTICLE(particle%rprop%PGC%X)}@   &
+        !     + @{USEPARTICLE(particle%y%Vel%Y)}@ * @{USEPARTICLE(particle%rprop%PGC%Y)}@   &
+        !     + @{USEPARTICLE(particle%y%Vel%Z)}@ * @{USEPARTICLE(particle%rprop%PGC%Z)}@
+        SDrho = interp%RHSR + nvecComponentSum(particle%y%vel * interp%pgc)
+
         ! material derivative is phi weighted in Rocflu
         ! drho/dt
         SDrho = SDrho / (rphif) 
 
         ! 03/23/2025 - TLJ - added extra term involving grad(rhog)
-        vgradrho =  vx*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%X)}@) +    &
-                    vy*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Y)}@) +    &
-                    vz*(@{USEPARTICLE(ppiclf_parts(i)%rprop%RHOG%Z)}@)
+        ! vgradrho =  vx*(@{USEPARTICLE(particle%rprop%RHOG%X)}@) +    &
+        !             vy*(@{USEPARTICLE(particle%rprop%RHOG%Y)}@) +    &
+        !             vz*(@{USEPARTICLE(particle%rprop%RHOG%Z)}@)
+        vgradrho = nvecComponentSum(v * interp%rhog)
 
-        ug = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%X)}@
-        vg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Y)}@
-        wg = @{USEPARTICLE(ppiclf_parts(i)%rprop%U%Z)}@
+        ! ug = @{USEPARTICLE(particle%rprop%U%X)}@
+        ! vg = @{USEPARTICLE(particle%rprop%U%Y)}@
+        ! wg = @{USEPARTICLE(particle%rprop%U%Z)}@
+        ug = interp%U
 
         ! Take care of volume in Binary subroutine
-        famx = rcd_am*(vx*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%X)}@) + ug*vgradrho)
+        ! famx = rcd_am*(vx*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%X)}@) + ug*vgradrho)
 
-        famy = rcd_am*(vy*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Y)}@) + vg*vgradrho)
+        ! famy = rcd_am*(vy*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%Y)}@) + vg*vgradrho)
 
-        famz = rcd_am*(vz*SDrho + rhof*(@{USEPARTICLE(ppiclf_parts(i)%rprop%SDR%Z)}@) + wg*vgradrho)
+        ! famz = rcd_am*(vz*SDrho + rhof*(@{USEPARTICLE(particle%rprop%SDR%Z)}@) + wg*vgradrho)
+
+        fam = (v * SDrho + interp%SDR * rhof + ug * vgradrho) * rcd_am
 
         ! Multiply by neighbors here for storing
-        FamUnary(1) = famx*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)
-        FamUnary(2) = famy*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)
-        FamUnary(3) = famz*(@{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@)
+        ! FamUnary(1) = famx*(@{USEPARTICLE(particle%rprop%VOLP)}@)
+        ! FamUnary(2) = famy*(@{USEPARTICLE(particle%rprop%VOLP)}@)
+        ! FamUnary(3) = famz*(@{USEPARTICLE(particle%rprop%VOLP)}@)
+        FamUnary = fam * particle%rprop%VOLp
 
         ! Do not multiply by volume for Fam, as this is done
         ! in user file (if nneighbors=0) or Binary subroutine (if nneighbors>0)
-        Fam(1) = famx
-        Fam(2) = famy
-        Fam(3) = famz
+        ! Fam(1) = famx
+        ! Fam(2) = famy
+        ! Fam(3) = famz
 
-        if (ppiclf_debug==2) then
-            if (ppiclf_nid .eq. 0 .or. ppiclf_np == 1) then
-                if (i<=5 .and. iStage==1) then  
-                    open(unit=7051,file='fort.7051',position='append')
-                    open(unit=7052,file='fort.7052',position='append')
-                    open(unit=7053,file='fort.7053',position='append')
-                    open(unit=7054,file='fort.7054',position='append')
-                    open(unit=7055,file='fort.7055',position='append')
-                    write(7050+i,*) i, ppiclf_nid, ppiclf_np, ppiclf_time,   & ! 0-3
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%RHSR)}@,          & ! 4
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%X)}@,         & ! 5
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Y)}@,         & ! 6
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%PGC%Z)}@,         & ! 7
-                        SDrho,                                                & ! 8
-                        rhof, rphip, rmachp, SDrho,                           & ! 9-12
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%X)}@,        & ! 13
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%Y)}@,        & ! 14
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%Z)}@,        & ! 15
-                        Wdot_neighbor_mean(1:3), nneighbors,                  & ! 16-19
-                        famx, famy, famz,                                     & ! 20-22
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@*Fam(1),   & ! 23
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@*Fam(2),   & ! 24
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@*Fam(3)      ! 25
-                    flush(7051)
-                    flush(7052)
-                    flush(7053)
-                    flush(7054)
-                    flush(7055)
-                end if  
-            end if  
-        end if  
+        ! if (ppiclf_debug==2) then
+        !     if (ppiclf_nid .eq. 0 .or. ppiclf_np == 1) then
+        !         if (i<=5 .and. iStage==1) then  
+        !             open(unit=7051,file='fort.7051',position='append')
+        !             open(unit=7052,file='fort.7052',position='append')
+        !             open(unit=7053,file='fort.7053',position='append')
+        !             open(unit=7054,file='fort.7054',position='append')
+        !             open(unit=7055,file='fort.7055',position='append')
+        !             write(7050+i,*) i, ppiclf_nid, ppiclf_np, ppiclf_time,   & ! 0-3
+        !                 @{USEPARTICLE(particle%rprop%RHSR)}@,          & ! 4
+        !                 @{USEPARTICLE(particle%rprop%PGC%X)}@,         & ! 5
+        !                 @{USEPARTICLE(particle%rprop%PGC%Y)}@,         & ! 6
+        !                 @{USEPARTICLE(particle%rprop%PGC%Z)}@,         & ! 7
+        !                 SDrho,                                                & ! 8
+        !                 rhof, rphip, rmachp, SDrho,                           & ! 9-12
+        !                 @{USEPARTICLE(particle%rprop%WDOT%X)}@,        & ! 13
+        !                 @{USEPARTICLE(particle%rprop%WDOT%Y)}@,        & ! 14
+        !                 @{USEPARTICLE(particle%rprop%WDOT%Z)}@,        & ! 15
+        !                 Wdot_neighbor_mean(1:3), nneighbors,                  & ! 16-19
+        !                 famx, famy, famz,                                     & ! 20-22
+        !                 @{USEPARTICLE(particle%rprop%VOLP)}@*Fam(1),   & ! 23
+        !                 @{USEPARTICLE(particle%rprop%VOLP)}@*Fam(2),   & ! 24
+        !                 @{USEPARTICLE(particle%rprop%VOLP)}@*Fam(3)      ! 25
+        !             flush(7051)
+        !             flush(7052)
+        !             flush(7053)
+        !             flush(7054)
+        !             flush(7055)
+        !         end if  
+        !     end if  
+        ! end if  
 
         return
     end procedure ppiclf_user_AM_Briney_Unary
@@ -315,7 +329,7 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
         ! Code:
         !
         ! particle radius
-        rad = @{USEPARTICLE(ppiclf_parts(i)%rprop%DP)}@ * 0.5d0
+        rad = particle%rprop%DP * 0.5d0
         
         ! ppiclf_nndist is neighbor width - MIN(user defined,4*P_dia)
         dr_max = ppiclf_nndist 
@@ -337,54 +351,57 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_AddedMass
             IA = IA_analytical(dr_max, rad, alpha) ! self acceleration
             II = II_analytical(dr_max, rad, alpha) ! neighbor acceleration (induced)
         else
-            if (ppiclf_nid==0 .and. iStage==1) then
-                print*, "***WARNING*** - NUMERICAL FUNCTIONS USED IN ADDED MASS"
-            endif
+            ! if (ppiclf_nid==0 .and. iStage==1) then
+            !     print*, "***WARNING*** - NUMERICAL FUNCTIONS USED IN ADDED MASS"
+            ! endif
             IA = IA_numerical(dr_max, rad, alpha)
             II = II_numerical(dr_max, rad, alpha)
         end if
 
-        do j=1,3
-            Fam(j) = Fam(j) + IA*(@{USEPARTICLE(ppiclf_parts(i)%rprop%wdot, skipIndex)}@(j))  ! added mass
-            Fam(j) = Fam(j) + II*Wdot_neighbor_mean(j) / nneighbors ! induced added mass
-        end do
+        ! do j=1,3
+        !     Fam(j) = Fam(j) + IA*(@{USEPARTICLE(particle%rprop%wdot, skipIndex)}@(j))  ! added mass
+        !     Fam(j) = Fam(j) + II*Wdot_neighbor_mean(j) / nneighbors ! induced added mass
+        ! end do
+        fam = fam + particle%rprop%wdot * IA
+        fam = fam + Wdot_neighbor_mean * II
 
         ! multiply by volume before adding unary term
         ! doing so here implies that the particle volume is
         ! the same for all particles; i.e., monodisperse packs
-        do j=1,3
-            Fam(j) = @{USEPARTICLE(ppiclf_parts(i)%rprop%VOLP)}@*Fam(j) 
-        end do
+        ! do j=1,3
+        !     Fam(j) = @{USEPARTICLE(particle%rprop%VOLP)}@*Fam(j) 
+        ! end do
+        fam = fam*particle%rprop%volp
 
-        famx = Fam(1)
-        famy = Fam(2)
-        famz = Fam(3)
+        ! famx = Fam(1)
+        ! famy = Fam(2)
+        ! famz = Fam(3)
             
-        if (ppiclf_debug==2) then
-            if (ppiclf_nid .eq. 0 .or. ppiclf_np == 1) then
-                if (i<=5 .and. iStage==1) then
-                    open(unit=7061,file='fort.7061',position='append')
-                    open(unit=7062,file='fort.7062',position='append')
-                    open(unit=7063,file='fort.7063',position='append')
-                    open(unit=7064,file='fort.7064',position='append')
-                    open(unit=7065,file='fort.7065',position='append')
-                    write(7060+i,*) i,iStage, ppiclf_time,                  & ! 0-2
-                        rphip, rmachp,                                      & ! 3-4
-                        IA, II,                                             & ! 5-6
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%X)}@,      & ! 7
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%Y)}@,      & ! 8
-                        @{USEPARTICLE(ppiclf_parts(i)%rprop%WDOT%Z)}@,      & ! 9
-                        Wdot_neighbor_mean(1:3), nneighbors,                & ! 10-13
-                        famx, famy, famz,                                   & ! 14-16
-                        Fam(1), Fam(2), Fam(3)                                ! 17-19
-                    flush(7061)
-                    flush(7062)
-                    flush(7063)
-                    flush(7064)
-                    flush(7065)
-                end if
-            end if
-        end if
+        ! if (ppiclf_debug==2) then
+        !     if (ppiclf_nid .eq. 0 .or. ppiclf_np == 1) then
+        !         if (i<=5 .and. iStage==1) then
+        !             open(unit=7061,file='fort.7061',position='append')
+        !             open(unit=7062,file='fort.7062',position='append')
+        !             open(unit=7063,file='fort.7063',position='append')
+        !             open(unit=7064,file='fort.7064',position='append')
+        !             open(unit=7065,file='fort.7065',position='append')
+        !             write(7060+i,*) i,iStage, ppiclf_time,                  & ! 0-2
+        !                 rphip, rmachp,                                      & ! 3-4
+        !                 IA, II,                                             & ! 5-6
+        !                 @{USEPARTICLE(particle%rprop%WDOT%X)}@,      & ! 7
+        !                 @{USEPARTICLE(particle%rprop%WDOT%Y)}@,      & ! 8
+        !                 @{USEPARTICLE(particle%rprop%WDOT%Z)}@,      & ! 9
+        !                 Wdot_neighbor_mean(1:3), nneighbors,                & ! 10-13
+        !                 famx, famy, famz,                                   & ! 14-16
+        !                 Fam(1), Fam(2), Fam(3)                                ! 17-19
+        !             flush(7061)
+        !             flush(7062)
+        !             flush(7063)
+        !             flush(7064)
+        !             flush(7065)
+        !         end if
+        !     end if
+        ! end if
         
 
         return

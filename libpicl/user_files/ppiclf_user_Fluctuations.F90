@@ -29,27 +29,26 @@
 !
 !-----------------------------------------------------------------------
 !
-#:include "PPICLF_PARTMACROS.fypp"
 #include "PPICLF_STD.h"
 submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
     ! particle data
-    use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: @{USEMODVAR(PPICLF_t_particle, ppiclf_parts)}@
+    use ppiclf_data, only: 
+    use ppiclf_m_particledata, only:
     ! grid data
     use ppiclf_data, only:
     use ppiclf_data, only:
     use ppiclf_data, only:
     ! particle options variables
     use ppiclf_data, only:
-    use ppiclf_data, only: ppiclf_ndim
-    use ppiclf_data, only: ppiclf_nndist, ppiclf_dt, ppiclf_time, ppiclf_rk3ark, ppiclf_filter
+    use ppiclf_data, only: 
+    use ppiclf_data, only: 
     ! use ppiclf_data, only:
     ! comm variables
-    use ppiclf_data, only: ppiclf_nid, ppiclf_np
+    use ppiclf_data, only:
     ! binning variables
-    use ppiclf_data, only: ppiclf_n_bins, ppiclf_bins_dx, ppiclf_binb
+    use ppiclf_data, only:
     ! ghost particle variables
-    use ppiclf_data, only: ppiclf_npart_gp
+    use ppiclf_data, only: 
     ! wall support variables
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
@@ -60,23 +59,32 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
     use ppiclf_m_user_RFLUdata
 
     use ppiclf_op, only: ppiclf_exittr
+    use ppiclf_user_random
     implicit none
 
 
     contains
     module procedure ppiclf_user_QS_fluct_Lattanzi
         !
+        ! Input:
+        !
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp 
+        ! real*8, intent(inout) :: fqs_fluct(3), UnifRnd(6)
+        ! type(PPICLF_t_realNVec), intent(inout) :: upmean, u2pmean
+        ! integer*4, intent(in) :: icpmean
+        ! real*8, intent(in) :: rphip, vmag, rmachp, rmu, dp, rep
+        !
         ! Internal:
         !
-      
-
-        real*8 aSDE,bq,bSDE,chi,denum,dW1,dW2,dW3,fq,Fs,gkern,sigF,tF_inv,theta,upflct,vpflct,wpflct,Z1,Z2,Z3
-        real*8 TwoPi
+        real*8 aSDE,bq,bSDE,chi,denum,fq,Fs,gkern,sigF,tF_inv,theta
+        ! real*8 upflct,vpflct,wpflct,Z1,Z2,Z3,dW1,dW2,dW3
+        type(PPICLF_t_realNVec) :: upflct, Z, dW, tempVec
+        real*8, parameter :: TwoPi = 2.0d0*acos(-1.0d0)
 
         !
         ! Code:
         !
-        TwoPi = 2.0d0*acos(-1.0d0)
 
 
         if (qs_fluct_filter_flag==0) then
@@ -86,18 +94,20 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         endif
       
 
-        upmean = upmean / denum
-        vpmean = vpmean / denum
-        wpmean = wpmean / denum
+        ! upmean = upmean / denum
+        ! vpmean = vpmean / denum
+        ! wpmean = wpmean / denum
+        upmean = upmean /denum
+        ! u2pmean = u2pmean / denum
+        ! v2pmean = v2pmean / denum
+        ! w2pmean = w2pmean / denum
         u2pmean = u2pmean / denum
-        v2pmean = v2pmean / denum
-        w2pmean = w2pmean / denum
 
-        if (ppiclf_debug==2) then
-            if (ppiclf_nid==0 .and. iStage==1) then
-                write(6,"(2x,E16.8,i5,16(1x,F13.8))") ppiclf_time,denum,upmean,vpmean,wpmean
-            endif
-        endif
+        ! if (ppiclf_debug==2) then
+        !     if (ppiclf_nid==0 .and. iStage==1) then
+        !         write(6,"(2x,E16.8,i5,16(1x,F13.8))") ppiclf_time,denum,upmean,vpmean,wpmean
+        !     endif
+        ! endif
 
         ! Lattenzi is valid only for incompressible flows,
         !   so here we use the compressible correction of Osnes
@@ -120,14 +130,16 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         !    This is now fixed - Comment 4/12/24
         !
         ! Particle velocity fluctuation
-        upflct = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%X)}@ - upmean
-        vpflct = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Y)}@ - vpmean
-        wpflct = @{USEPARTICLE(ppiclf_parts(i)%y%Vel%Z)}@ - wpmean
+        ! upflct = @{USEPARTICLE(particle%y%Vel%X)}@ - upmean
+        ! vpflct = @{USEPARTICLE(particle%y%Vel%Y)}@ - vpmean
+        ! wpflct = @{USEPARTICLE(particle%y%Vel%Z)}@ - wpmean
+        upflct = particle%y%vel - upmean
 
         ! Granular temperature
         ! theta = (upflct*upflct + vpflct*vpflct + wpflct*wpflct)/3.0
         ! This is averaged over neighboring particles
-        theta  = ((u2pmean + v2pmean + w2pmean) - (upmean**2 + vpmean**2 + wpmean**2))/3.0d0
+        ! theta  = ((u2pmean + v2pmean + w2pmean) - (upmean**2 + vpmean**2 + wpmean**2))/3.0d0
+        theta = (nvecComponentSum(u2pmean) - nvecComponentSum(upmean * upmean)) / 3.0d0
 
         ! 11/21/24 - Thierry - prevent NaN variables
         if(theta.le.1.d-12) then
@@ -139,42 +151,45 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         aSDE = tF_inv
         bSDE = sigF*sqrt(2.0*tF_inv)
 
-        call RANDOM_NUMBER(UnifRnd)
+        ! call RANDOM_NUMBER(UnifRnd)
+        call ppiclf_user_random_number(particle%rngState, UnifRnd)
 
-        Z1 = sqrt(-2.0d0*log(UnifRnd(1)))*cos(TwoPi*UnifRnd(2))
-        Z2 = sqrt(-2.0d0*log(UnifRnd(3)))*cos(TwoPi*UnifRnd(4))
-        Z3 = sqrt(-2.0d0*log(UnifRnd(5)))*cos(TwoPi*UnifRnd(6))
+        Z%vec(1) = sqrt(-2.0d0*log(UnifRnd(1)))*cos(TwoPi*UnifRnd(2))
+        Z%vec(2) = sqrt(-2.0d0*log(UnifRnd(3)))*cos(TwoPi*UnifRnd(4))
+        Z%vec(3) = sqrt(-2.0d0*log(UnifRnd(5)))*cos(TwoPi*UnifRnd(6))
 
-        dW1 = sqrt(fac)*Z1
-        dW2 = sqrt(fac)*Z2
-        dW3 = sqrt(fac)*Z3
+        ! dW1 = sqrt(fac)*Z1
+        ! dW2 = sqrt(fac)*Z2
+        ! dW3 = sqrt(fac)*Z3
+        dW = Z * sqrt(fac)
 
-        fqs_fluct(1) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%X)}@)+ bSDE*dW1
-        fqs_fluct(2) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Y)}@)+ bSDE*dW2
-        fqs_fluct(3) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Z)}@)+ bSDE*dW3
+        ! fqs_fluct(1) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%X)}@)+ bSDE*dW1
+        ! fqs_fluct(2) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%Y)}@)+ bSDE*dW2
+        ! fqs_fluct(3) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%Z)}@)+ bSDE*dW3
+        tempVec = particle%rprop%fluctf * (1.0d0 - aSDE*fac) + dW * bSDE
+        fqs_fluct = tempVec%vec
 
-
-        if (ppiclf_debug==2 .and. (iStage==1 .and. ppiclf_nid==0)) then
-            if (ppiclf_time.gt.2.d-8) then
-                if (i<=10) then
-                    write(7350+(i-1)*1,*) i,ppiclf_time,                        & ! 0-1
-                        rpi,rmu,rkappa,rmass,vmag,rhof,dp,rep,rphip,            & ! 2-10
-                        rphif,asndf,rmachp,rhop,rhoMixt,reyL,rnu,fac,           & ! 11-18
-                        vx,vy,vz,ppiclf_dt,                                     & ! 19-22
-                        ppiclf_npart,ppiclf_n_bins(1:3),                        & ! 23-26
-                        ppiclf_n_bins(1)*ppiclf_n_bins(2)*ppiclf_n_bins(3),     & ! 27
-                        ppiclf_binb(1:6),                                       & ! 28-33
-                        upmean,vpmean,wpmean,phipmean,                          & ! 34-37
-                        @{USEPARTICLE(ppiclf_parts(i)%y%vel)}@,                 & ! 38-40
-                        upflct,vpflct,wpflct,icpmean,                           & ! 41-44
-                        fq,Fs,bq,theta,chi,tF_inv,                              & ! 45-50
-                        aSDE,bSDE,sigF,                                         & ! 51-53
-                        fqs_fluct(1:3),                                         & ! 54-56
-                        Z1,Z2,Z3,dW1,dW2,dW3,                                   & ! 57-62
-                        ppiclf_np
-                endif
-            endif
-        endif
+        ! if (ppiclf_debug==2 .and. (iStage==1 .and. ppiclf_nid==0)) then
+        !     if (ppiclf_time.gt.2.d-8) then
+        !         if (i<=10) then
+        !             write(7350+(i-1)*1,*) i,ppiclf_time,                        & ! 0-1
+        !                 rpi,rmu,rkappa,rmass,vmag,rhof,dp,rep,rphip,            & ! 2-10
+        !                 rphif,asndf,rmachp,rhop,rhoMixt,reyL,rnu,fac,           & ! 11-18
+        !                 vx,vy,vz,ppiclf_dt,                                     & ! 19-22
+        !                 ppiclf_npart,ppiclf_n_bins(1:3),                        & ! 23-26
+        !                 ppiclf_n_bins(1)*ppiclf_n_bins(2)*ppiclf_n_bins(3),     & ! 27
+        !                 ppiclf_binb(1:6),                                       & ! 28-33
+        !                 upmean,vpmean,wpmean,phipmean,                          & ! 34-37
+        !                 @{USEPARTICLE(particle%y%vel)}@,                 & ! 38-40
+        !                 upflct,vpflct,wpflct,icpmean,                           & ! 41-44
+        !                 fq,Fs,bq,theta,chi,tF_inv,                              & ! 45-50
+        !                 aSDE,bSDE,sigF,                                         & ! 51-53
+        !                 fqs_fluct(1:3),                                         & ! 54-56
+        !                 Z1,Z2,Z3,dW1,dW2,dW3,                                   & ! 57-62
+        !                 ppiclf_np
+        !         endif
+        !     endif
+        ! endif
 
 
         return
@@ -214,11 +229,24 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
     !-----------------------------------------------------------------------
     !
     module procedure ppiclf_user_QS_fluct_Osnes
+        ! 
+        ! Input:
+        !
+        ! type(PPICLF_U_t_particle), intent(inout) :: particle
+        ! type(ppiclf_u_t_interp), intent(in) :: interp 
+        ! real*8, intent(inout) :: fqs_fluct(3), UnifRnd(6)
+        ! type(PPICLF_t_realNVec), intent(inout) :: upmean, u2pmean
+        ! integer*4, intent(in) :: icpmean
+        ! real*8, intent(in) :: rphip, vmag, rmachp, rmu, dp, rep, phipmean
         !
         ! Internal:
         !
-        real*8 aSDE,bq,chi,denum,dW1,dW2,dW3,fq,Fs,gkern,sigD,tF_inv,theta,upflct,vpflct,wpflct,Z1,Z2,Z3
-        real*8 TwoPi
+        real*8, parameter :: TwoPi = 2.0d0*acos(-1.0d0)
+
+        real*8 aSDE,bq,chi,denum,fq,Fs,gkern,sigD,tF_inv,theta
+        real*8 dW1,dW2,dW3,Z1,Z2,Z3
+        ! real*8 upflct,vpflct,wpflct
+        type(PPICLF_t_realNVec) upflct, tempVec
         real*8 bSDE_CD, bSDE_CL, bSDE_CT, CD_frac, CD_prime
         real*8 sigT,sigCT
         real*8 sigmoid_cf, f_CF
@@ -238,10 +266,11 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         real*8 F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, G1, G2, G3, G4, G5, G6, G7, G8, H1, H2, H3, H4, H5, H6, H7, H8, A1, A2, A3, A4
         real*8 D9, D10, D11
         real*8 fit_func
+
+
         !
         ! Code:
         !
-        TwoPi = 2.0d0*acos(-1.0d0)
 
         if (qs_fluct_filter_flag==0) then
             denum = max(dfloat(icpmean),1.d0)  ! for arithmetic mean
@@ -249,18 +278,20 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
             denum = max(phipmean,1.0e-6)  ! for volume mean
         endif
         
+        ! upmean = upmean / denum
+        ! vpmean = vpmean / denum
+        ! wpmean = wpmean / denum
         upmean = upmean / denum
-        vpmean = vpmean / denum
-        wpmean = wpmean / denum
+        ! u2pmean = u2pmean / denum
+        ! v2pmean = v2pmean / denum
+        ! w2pmean = w2pmean / denum
         u2pmean = u2pmean / denum
-        v2pmean = v2pmean / denum
-        w2pmean = w2pmean / denum
 
-        if (ppiclf_debug==2) then
-            if (ppiclf_nid==0 .and. iStage==1) then
-                write(6,*) 'FLUC1 ', ppiclf_time,denum,upmean,vpmean,wpmean, abs(upmean),abs(vpmean),abs(wpmean),u2pmean,v2pmean,w2pmean
-            endif
-        endif
+        ! if (ppiclf_debug==2) then
+        !     if (ppiclf_nid==0 .and. iStage==1) then
+        !         write(6,*) 'FLUC1 ', ppiclf_time,denum,upmean,vpmean,wpmean, abs(upmean),abs(vpmean),abs(wpmean),u2pmean,v2pmean,w2pmean
+        !     endif
+        ! endif
 
         ! Equations (9-12) of Osnes paper, with eqn (9) corrected
         ! Note that sigD has units of force; N = Pa-m^2
@@ -275,15 +306,17 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         !    average over neighboring particles, here it is approximated 
         !    as that of the chosen particle - Comment 3/6/24
         !    This is now fixed - Comment 4/12/24
-        !
-        upflct = @{USEPARTICLE(ppiclf_parts(i)%y%vel%X)}@ - upmean
-        vpflct = @{USEPARTICLE(ppiclf_parts(i)%y%vel%Y)}@ - vpmean
-        wpflct = @{USEPARTICLE(ppiclf_parts(i)%y%vel%Z)}@ - wpmean
+        
+        ! upflct = @{USEPARTICLE(particle%y%vel%X)}@ - upmean
+        ! vpflct = @{USEPARTICLE(particle%y%vel%Y)}@ - vpmean
+        ! wpflct = @{USEPARTICLE(particle%y%vel%Z)}@ - wpmean
+        upflct = particle%y%vel - upmean
 
         ! Granular temperature
         ! theta = (upflct*upflct + vpflct*vpflct + wpflct*wpflct)/3.0
         ! This is averaged over neighboring particles
-        theta  = ((u2pmean + v2pmean + w2pmean) - (upmean**2 + vpmean**2 + wpmean**2))/3.0d0
+        ! theta  = ((u2pmean + v2pmean + w2pmean) - (upmean**2 + vpmean**2 + wpmean**2))/3.0d0
+        theta = (nvecComponentSum(u2pmean) - nvecComponentSum(upmean * upmean)) / 3.0d0
 
         ! 11/21/24 - Thierry - prevent NaN variables
         if(theta.le.1.d-12) then
@@ -306,11 +339,13 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         !
         ! 03/13/2025 - Thierry - if velocity is very small, don't impose fluctuations
         if(vmag > 1.d-8) then
-            avec = [vx,vy,vz]/vmag
+            ! avec = [vx,vy,vz]/vmag
+            avec = (v%vec)/vmag
 
-            CD_prime = (@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%X)}@)*avec(1) +   &
-                       (@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Y)}@)*avec(2) +   &
-                       (@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Z)}@)*avec(3)
+            ! CD_prime = (@{USEPARTICLE(particle%rprop%FLUCTF%X)}@)*avec(1) +   &
+            !            (@{USEPARTICLE(particle%rprop%FLUCTF%Y)}@)*avec(2) +   &
+            !            (@{USEPARTICLE(particle%rprop%FLUCTF%Z)}@)*avec(3)
+            CD_prime = nvecComponentSum(particle%rprop%FLUCTF * avec)
             CD_frac  = CD_prime/sigD
 
         else
@@ -326,13 +361,13 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         sigT  = f_CF*sigD
         bSDE_CL = sigT*sqrt(2.0*tF_inv)
 
-        if (ppiclf_debug==2) then
-            if (i<=4) then
-                if (ppiclf_nid==0 .and. iStage==1) then
-                    write(6,*) 'FLUC1 ',i,CD_prime,CD_frac,sigD,theta,bSDE_CD,bSDE_CL
-                endif
-            endif
-        endif
+        ! if (ppiclf_debug==2) then
+        !     if (i<=4) then
+        !         if (ppiclf_nid==0 .and. iStage==1) then
+        !             write(6,*) 'FLUC1 ',i,CD_prime,CD_frac,sigD,theta,bSDE_CD,bSDE_CL
+        !         endif
+        !     endif
+        ! endif
 
 
         ! Calculate the three orthogonal unit vectors
@@ -366,7 +401,8 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         cvec    = cvec / denum
 
         ! Generate  Gaussian Random Values
-        call RANDOM_NUMBER(UnifRnd)
+        ! call RANDOM_NUMBER(UnifRnd)
+        call ppiclf_user_random_number(particle%rngState, UnifRnd)
 
         ! Box-Muller transform for generating two independent standard normal
         ! (Gaussian) random variables
@@ -394,37 +430,39 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         if(qs_fluct_flag .eq. 0) then
             fqs_fluct = 0.0d0
         else
-            fqs_fluct(1) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%X)}@) + bSDE_CD*dW1*avec(1) + bSDE_CL*dW2*dvec(1)
-            fqs_fluct(2) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Y)}@) + bSDE_CD*dW1*avec(2) + bSDE_CL*dW2*dvec(2)
-            fqs_fluct(3) = (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%FLUCTF%Z)}@) + bSDE_CD*dW1*avec(3) + bSDE_CL*dW2*dvec(3)
+            ! fqs_fluct(1) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%X)}@) + bSDE_CD*dW1*avec(1) + bSDE_CL*dW2*dvec(1)
+            ! fqs_fluct(2) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%Y)}@) + bSDE_CD*dW1*avec(2) + bSDE_CL*dW2*dvec(2)
+            ! fqs_fluct(3) = (1.0-aSDE*fac)*(@{USEPARTICLE(particle%rprop%FLUCTF%Z)}@) + bSDE_CD*dW1*avec(3) + bSDE_CL*dW2*dvec(3)
+            tempVec = particle%rprop%FLUCTF * (1.0d0 - aSDE*fac) + bSDE_CD*dW1*avec + bSDE_CL*dW2*dvec
+            fqs_fluct = tempVec%vec
         endif
 
-        if (ppiclf_debug==2 .and. (iStage==1 .and. ppiclf_nid==0)) then
-            if (ppiclf_time.gt.2.d-8) then
-                if (i<=10) then
-                    write(7350+(i-1)*1,*) i,ppiclf_time,                    & ! 0-1
-                    rpi,rmu,rkappa,rmass,vmag,rhof,dp,rep,rphip,            & ! 2-10
-                    rphif,asndf,rmachp,rhop,rhoMixt,reyL,rnu,fac,           & ! 11-18
-                    vx,vy,vz,ppiclf_dt,                                     & ! 19-22
-                    ppiclf_npart,ppiclf_n_bins(1:3),                        & ! 23-26
-                    ppiclf_n_bins(1)*ppiclf_n_bins(2)*ppiclf_n_bins(3),     & ! 27
-                    ppiclf_binb(1:6),                                       & ! 28-33
-                    upmean,vpmean,wpmean,phipmean,                          & ! 34-37
-                    @{USEPARTICLE(ppiclf_parts(i)%y%vel)}@,                 & ! 38-40
-                    upflct,vpflct,wpflct,icpmean,                           & ! 41-44
-                    fq,Fs,bq,theta,chi,tF_inv,                              & ! 45-50
-                    aSDE,bSDE_CD,bSDE_CL,                                   & ! 51-53
-                    sigD,sigT,                                              & ! 54-55
-                    CD_prime,CD_frac,sigmoid_cf,f_CF,                       & ! 56-59
-                    eunit,avec,bvec,                                        & ! 60-68
-                    cvec,dvec,rpi,                                          & ! 69-75
-                    fqs_fluct(1:3),                                         & ! 76-78
-                    Z1,Z2,dW1,dW2,                                          & ! 79-82
-                    ppiclf_np,                                              & ! 83
-                    @{USEPARTICLE(ppiclf_parts(i)%y%pos)}@                    ! 84-86
-                endif
-            endif
-        endif
+        ! if (ppiclf_debug==2 .and. (iStage==1 .and. ppiclf_nid==0)) then
+        !     if (ppiclf_time.gt.2.d-8) then
+        !         if (i<=10) then
+        !             write(7350+(i-1)*1,*) i,ppiclf_time,                    & ! 0-1
+        !             rpi,rmu,rkappa,rmass,vmag,rhof,dp,rep,rphip,            & ! 2-10
+        !             rphif,asndf,rmachp,rhop,rhoMixt,reyL,rnu,fac,           & ! 11-18
+        !             vx,vy,vz,ppiclf_dt,                                     & ! 19-22
+        !             ppiclf_npart,ppiclf_n_bins(1:3),                        & ! 23-26
+        !             ppiclf_n_bins(1)*ppiclf_n_bins(2)*ppiclf_n_bins(3),     & ! 27
+        !             ppiclf_binb(1:6),                                       & ! 28-33
+        !             upmean,vpmean,wpmean,phipmean,                          & ! 34-37
+        !             @{USEPARTICLE(particle%y%vel)}@,                 & ! 38-40
+        !             upflct,vpflct,wpflct,icpmean,                           & ! 41-44
+        !             fq,Fs,bq,theta,chi,tF_inv,                              & ! 45-50
+        !             aSDE,bSDE_CD,bSDE_CL,                                   & ! 51-53
+        !             sigD,sigT,                                              & ! 54-55
+        !             CD_prime,CD_frac,sigmoid_cf,f_CF,                       & ! 56-59
+        !             eunit,avec,bvec,                                        & ! 60-68
+        !             cvec,dvec,rpi,                                          & ! 69-75
+        !             fqs_fluct(1:3),                                         & ! 76-78
+        !             Z1,Z2,dW1,dW2,                                          & ! 79-82
+        !             ppiclf_np,                                              & ! 83
+        !             @{USEPARTICLE(particle%y%pos)}@                    ! 84-86
+        !         endif
+        !     endif
+        ! endif
 
         !---------------------------------------------------------------------------
         ! Pseudo-Turbulence Calculations starts here 
@@ -471,11 +509,13 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
         
             ! CD_average is zero at early time steps
 
-            avec = [vx,vy,vz]/vmag
+            ! avec = [vx,vy,vz]/vmag
+            avec = (v%vec)/vmag
 
-            CD_average = fqsx*avec(1) +  &
-                         fqsy*avec(2) +  &
-                         fqsz*avec(3)
+            ! CD_average = fqsx*avec(1) +  &
+            !              fqsy*avec(2) +  &
+            !              fqsz*avec(3)
+            CD_average = nvecComponentSum(fqs * avec)
 
             ! avoiding singularity
             if(CD_average .lt. 1.d-8) return
@@ -528,9 +568,11 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
             Rmean_perp = Rmean_perp * 0.5d0 * vmag**2
 
             !--  Multiply by the mean relative velocity & flow kinetic energy to dimentionalize      
-            Tmean_par(1)  = Tmean_par(1) * vx * k_Osnes * 0.5d0 * vmag**2
-            Tmean_par(2)  = Tmean_par(2) * vy * k_Osnes * 0.5d0 * vmag**2
-            Tmean_par(3)  = Tmean_par(3) * vz * k_Osnes * 0.5d0 * vmag**2
+            ! Tmean_par(1)  = Tmean_par(1) * vx * k_Osnes * 0.5d0 * vmag**2
+            ! Tmean_par(2)  = Tmean_par(2) * vy * k_Osnes * 0.5d0 * vmag**2
+            ! Tmean_par(3)  = Tmean_par(3) * vz * k_Osnes * 0.5d0 * vmag**2
+            tempVec = v * Tmean_par * k_Osnes * 0.5d0 * (vmag**2)
+            Tmean_par = tempVec%vec
 
             !------ Lagrangian Model
     
@@ -557,7 +599,8 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
             bSDE_CL = s_perp*sqrt(2.0*tF_inv)
             bSDE_CT = s_T *sqrt(2.0*tF_inv)
     
-            call RANDOM_NUMBER(UnifRnd)
+            ! call RANDOM_NUMBER(UnifRnd)
+            call ppiclf_user_random_number(particle%rngState, UnifRnd)
         
             ! Box-Muller transform for generating two independent standard normal
             ! (Gaussian) random variables
@@ -572,9 +615,9 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
             dW3 = sqrt(fac)*Z3
     
             ! Langevin Model implemented for xi_par, xi_perp, xi_T
-            xi_par =    (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%XIPAR)}@) + bSDE_CD*dW1
-            xi_perp =   (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%XIPERP)}@) + bSDE_CL*dW2
-            xi_T =      (1.0-aSDE*fac)*(@{USEPARTICLE(ppiclf_parts(i)%rprop%XIT)}@) + bSDE_CT*dW3
+            xi_par =    (1.0-aSDE*fac)*(particle%rprop%XIPAR) + bSDE_CD*dW1
+            xi_perp =   (1.0-aSDE*fac)*(particle%rprop%XIPERP) + bSDE_CL*dW2
+            xi_T =      (1.0-aSDE*fac)*(particle%rprop%XIT) + bSDE_CT*dW3
 
             ! CD_prime has unit of Force
             ! CD_average has unit of Force
@@ -622,11 +665,13 @@ submodule (ppiclf_m_user_ForceModels) ppiclf_m_user_ForceModels_Fluctuations
 
             !--  Multiply by the mean relative velocity & flow kinetic energy to dimentionalize      
             !--  then add mean PTKE
-            T_par(1) = T_par(1) * vx * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(1)
+            ! T_par(1) = T_par(1) * vx * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(1)
 
-            T_par(2) = T_par(2) * vy * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(2)
+            ! T_par(2) = T_par(2) * vy * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(2)
 
-            T_par(3) = T_par(3) * vz * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(3)
+            ! T_par(3) = T_par(3) * vz * k_Osnes * 0.5d0 * vmag**2 + Tmean_par(3)
+            tempVec = v * t_par * Tmean_par * k_Osnes * 0.5d0 * (vmag**2)
+            t_par = tempVec%vec
 
         endif ! pseudoTurb_flag
 

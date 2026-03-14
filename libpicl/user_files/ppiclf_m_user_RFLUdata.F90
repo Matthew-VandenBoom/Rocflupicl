@@ -16,7 +16,19 @@ module ppiclf_m_user_RFLUdata
         rmu_fixed_param, rmu_suth_param, qs_fluct_filter_flag,      &
         qs_fluct_filter_adapt_flag,                                 &
         ViscousUnsteady_flag, ppiclf_nUnsteadyData,ppiclf_nTimeBH,  &
-        sbNearest_flag, burnrate_flag, flow_model, pseudoTurb_flag
+        sbNearest_flag, burnrate_flag, flow_model, pseudoTurb_flag, burnrate_model
     real*8 :: rmu_ref, tref, suth, ksp, erest
 
+    ! COMMON Name: RFLU_ppiclf_misc01
+    REAL*8 :: ppiclf_rcp_part
+
+    ! COMMON Name: RFLU_ppiclf_misc02
+    CHARACTER(12) :: ppiclf_matname
+
+    ! COMMON Name :: RFLU_ppiclf_msc03
+    real*8 :: ppiclf_p0
+    integer :: ppiclf_moveparticle
+
+    ! taken from ppiclf_data.F90
+    REAL*8 PPICLF_TIMEBH(PPICLF_VU)
 end module ppiclf_m_user_RFLUdata
