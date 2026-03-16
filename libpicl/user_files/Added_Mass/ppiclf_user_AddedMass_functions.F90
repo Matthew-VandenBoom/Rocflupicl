@@ -55,10 +55,10 @@ module ppiclf_user_AM_functions
     implicit none
     contains
 
-    real*8 function B11_11(d, alpha)
+    real*8 pure function B11_11(d, alpha)
     
         ! input
-        real*8 d, alpha
+        real*8, intent(in) :: d, alpha
         
         ! local vars
         ! asymptotic solution (Beguin et al. 2016)
@@ -78,10 +78,10 @@ module ppiclf_user_AM_functions
     end function B11_11
 
     ! perpendicular added mass
-    real*8 function B11_22(d, alpha)
+    real*8 pure function B11_22(d, alpha)
     
         ! input
-        real*8 d, alpha
+        real*8, intent(in) :: d, alpha
         
         ! local vars
         ! hot combined with alpha correction in this case
@@ -102,10 +102,10 @@ module ppiclf_user_AM_functions
     end function B11_22
     
     ! parallel induced added mass
-    real*8 function B12_11(d, alpha)
+    real*8 pure function B12_11(d, alpha)
         
         ! input
-        real*8 d, alpha
+        real*8, intent(in) :: d, alpha
         
         ! local vars
         real*8 asym, hot, alpha_corr
@@ -122,10 +122,10 @@ module ppiclf_user_AM_functions
     end function B12_11
       
     ! perpendicular induced added mass
-    real*8 function B12_22(d, alpha)
+    real*8 pure function B12_22(d, alpha)
         
         ! input
-        real*8 d, alpha
+        real*8, intent(in) :: d, alpha
         
         ! local vars
         real*8 asym, hot
@@ -153,11 +153,11 @@ module ppiclf_user_AM_functions
     !     rmax = center-to-center maximum neighbor distance
     !     rad = particle radius
     !     alpha = volume fraction
-    real*8 function IA_analytical(rmax, rad, alpha)
+    real*8 pure function IA_analytical(rmax, rad, alpha)
 
             
         ! input
-        real*8 rmax, rad, alpha
+        real*8, intent(in) :: rmax, rad, alpha
         
         ! local vars
         real*8 term1, term2, term3, c, numerator, B11, B22, maxr
@@ -198,10 +198,10 @@ module ppiclf_user_AM_functions
     end function IA_analytical
 
     ! induced added mass
-    real*8 function II_analytical(rmax, rad, alpha)
+    real*8 pure function II_analytical(rmax, rad, alpha)
       
         ! input
-        real*8 rmax, rad, alpha
+        real*8, intent(in) :: rmax, rad, alpha
         
         ! local vars
         real*8 term1, term2, term3, B11, B22, c, maxr, prefactor
@@ -250,10 +250,10 @@ module ppiclf_user_AM_functions
     !     https://doi.org/10.1063/1.1979488
     !     erratum: https://doi.org/10.1063/1.2188941
 
-    real*8 function rdf_analytical(r, alpha)
+    real*8 pure function rdf_analytical(r, alpha)
       
         ! inputs
-        real*8 r, alpha
+        real*8, intent(in) :: r, alpha
       
         ! local vars
         real*8  eta, d, mu, alpha0, beta0, denom_gamma, gamma, omega, kappa
@@ -328,10 +328,10 @@ module ppiclf_user_AM_functions
     !     rad = radius
     !     alpha = volume fraction
 
-    real*8 function IA_numerical_integrand(d, rad, alpha)
+    real*8 pure function IA_numerical_integrand(d, rad, alpha)
       
         ! input
-        real*8 d, rad, alpha
+        real*8, intent(in) :: d, rad, alpha
         
         ! local vars
         real*8 g, f11, f22, rho, pi, w
@@ -361,10 +361,10 @@ module ppiclf_user_AM_functions
     !     rad = radius
     !     alpha = volume fraction
 
-    real*8 function II_numerical_integrand(d, rad, alpha)
+    real*8 pure function II_numerical_integrand(d, rad, alpha)
       
         ! input
-        real*8 d, rad, alpha
+        real*8, intent(in) :: d, rad, alpha
         
         ! local vars
         real*8 g, f11, f22, rho, pi, w
@@ -390,10 +390,10 @@ module ppiclf_user_AM_functions
     !-----------------------------------------------------------------------
     !
       
-    real*8 function IA_numerical(rmax, rad, alpha)
+    real*8 pure function IA_numerical(rmax, rad, alpha)
       
         ! input
-        real*8 rmax, rad, alpha
+        real*8, intent(in) :: rmax, rad, alpha
         
         ! local vars
         real*8 maxr, dr, r, integral, f, coef(2)
@@ -445,10 +445,10 @@ module ppiclf_user_AM_functions
     !-----------------------------------------------------------------------
     !
       
-    real*8 function II_numerical(rmax, rad, alpha)
+    real*8 pure function II_numerical(rmax, rad, alpha)
       
         ! input
-        real*8 rmax, rad, alpha
+        real*8, intent(in) :: rmax, rad, alpha
         
         ! local vars
         real*8 maxr, dr, r, integral, f, coef(2)
@@ -502,13 +502,13 @@ module ppiclf_user_AM_functions
     ! Calculates the rotation matrix Q to align the coordinate 
     !    system such that the point (x, y, z) is on the x-axis
 
-    subroutine rotation_matrix(x, y, z, Q)
+    pure subroutine rotation_matrix(x, y, z, Q)
        
         ! inputs
-        real*8 x, y, z
+        real*8, intent(in) :: x, y, z
         
         ! output rotation matrix
-        real*8 Q(3, 3)
+        real*8, intent(inout) :: Q(3, 3)
         
         ! local vars
         real*8 gamma, beta
@@ -540,16 +540,16 @@ module ppiclf_user_AM_functions
     ! rad = particle radius
     ! R = resistance matrix (output)
 
-    subroutine resistance_pair(relPos, alpha, rad, R)
+    pure subroutine resistance_pair(relPos, alpha, rad, R)
        
         ! input: x, y, z of second particle relative to the second particle
         ! x = x2 - x1, etc.
         ! rad = particle radius (monodisperse)
-        type(PPICLF_t_realNVec) relPos
-        real*8 alpha, rad
+        type(PPICLF_t_realNVec), intent(in) :: relPos
+        real*8, intent(in) :: alpha, rad
        
         ! output: resistance matrix
-        real*8 R(6, 6)
+        real*8, intent(inout) :: R(6, 6)
        
         ! local vars
         real*8, dimension(3, 3) :: Q, Qt, B11, B12

@@ -93,6 +93,7 @@ SUBROUTINE PICL_TEMP_InitSolver( pRegion)
   USE RFLU_ModInCellTest
 
   use ppiclf_m_user_RFLUdata
+  use ppiclf_user_particle, only : PPICLF_U_t_particle, PPICLF_U_t_feedback ! particle data type
   ! use ppiclf_data, only: ang_per_angle, ang_per_flag, x_per_min, x_per_max,y_per_min, y_per_max, z_per_min, z_per_max
   ! use ppiclf_data, only: x_per_flag, y_per_flag, z_per_flag, ang_case, ang_per_xangle,ang_per_rin, ang_per_rout,xrot(3) , vrot(3)
 
@@ -129,8 +130,10 @@ INTEGER :: errorFlag,icg
                    yMaxCell,zMinCell,zMaxCell,x,vFrac,volpclsum,xLoc,yLoc,zLoc,yL, &
                    zpf_factor,xpf_factor,dp,neighborWidth,xp_min,xp_max, &
                    yp_min, yp_max, zp_min, zp_max, MinFluidCells, maxVF
-   REAL(RFREAL) :: y(PPICLF_LRS, PPICLF_LPART), &
-                   rprop(PPICLF_LRP, PPICLF_LPART)
+  !  REAL(RFREAL) :: y(PPICLF_LRS, PPICLF_LPART), &
+  !                  rprop(PPICLF_LRP, PPICLF_LPART)
+   type(PPICLF_U_t_particle) particles(PPICLF_LPART)
+   type(PPICLF_U_t_feedback) feedbackData
    REAL(RFREAL), DIMENSION(:,:), ALLOCATABLE :: rocGrid 
    REAL(RFREAL), DIMENSION(:,:), ALLOCATABLE :: xGrid, yGrid, zGrid
    REAL(RFREAL),ALLOCATABLE,DIMENSION(:) :: xData,yData,zData,rData,dumData    
@@ -335,7 +338,7 @@ IF(global%restartFromScratch) THEN
    i_global_max = npart_local*(global%myProcid+1)
    IF(i_global_max > npart) i_global_max = npart
 
-   rprop(1:PPICLF_LRP,1:PPICLF_LPART) = 0.0D0
+  !  rprop(1:PPICLF_LRP,1:PPICLF_LPART) = 0.0D0
    dp_max = 0.0D0
    xp_min =  17400000.0
    yp_min =  17400000.0
@@ -344,26 +347,24 @@ IF(global%restartFromScratch) THEN
    yp_max = -17400000.0
    zp_max = -17400000.0
    DO i_global=1,npart
-      READ(iFile,*) matName, (y(ii,i),ii=PPICLF_JX,PPICLF_JZ),dp !points.dat not formated
+      ! READ(iFile,*) matName, (y(ii,i),ii=PPICLF_JX,PPICLF_JZ),dp !points.dat not formated
+      READ(iFile,*) matName, (particles(i)%y%pos%vec(ii),ii=1,3),dp !points.dat not formated
 
       ! These are global max/min's since in 1:npart loop
       dp_max = max(dp_max,dp)
-      xp_min = min(xp_min,y(1,i)-dp/2.0)
-      xp_max = max(xp_max,y(1,i)+dp/2.0)
-      yp_min = min(yp_min,y(2,i)-dp/2.0)
-      yp_max = max(yp_max,y(2,i)+dp/2.0)
-      zp_min = min(zp_min,y(3,i)-dp/2.0)
-      zp_max = max(zp_max,y(3,i)+dp/2.0)
+      xp_min = min(xp_min,particles(i)%y%pos%vec(1)-dp/2.0)
+      xp_max = max(xp_max,particles(i)%y%pos%vec(1)+dp/2.0)
+      yp_min = min(yp_min,particles(i)%y%pos%vec(2)-dp/2.0)
+      yp_max = max(yp_max,particles(i)%y%pos%vec(2)+dp/2.0)
+      zp_min = min(zp_min,particles(i)%y%pos%vec(3)-dp/2.0)
+      zp_max = max(zp_max,particles(i)%y%pos%vec(3)+dp/2.0)
   
       ! if in range for this processor set all the other properties and increment i
       IF((i_global .GT. i_global_min) .AND. (i_global .LE. i_global_max)) THEN
-         y(PPICLF_JVX,i) = 0.0D0
-         y(PPICLF_JVY,i) = 0.0D0
-         y(PPICLF_JVZ,i) = 0.0D0
-         y(PPICLF_JT, i) = global%piclTemp
-         y(PPICLF_JOX,i) = 0.0D0
-         y(PPICLF_JOY,i) = 0.0D0
-         y(PPICLF_JOZ,i) = 0.0D0
+         particles(i)%y%vel%vec = 0.0D0
+         particles(i)%y%T = global%piclTemp
+         particles(i)%y%ang_vel%vec = 0.0D0
+
   
          ! search for material
          matName = ADJUSTL(TRIM(matName))
@@ -401,25 +402,26 @@ IF(global%restartFromScratch) THEN
          END IF
     
          ! now set properties that are not interpolated from Rocflu onto the particles
-         rprop(PPICLF_R_JRHOP,i) = rhop   ! particle density
-         rprop(PPICLF_R_JDP,i)   = dp ! particle diameter
-         rprop(PPICLF_R_JVOLP,i) = (4.0_RFREAL/3.0_RFREAL)*global%pi*&
+         particles(i)%rprop%RHOP = rhop   ! particle density
+         particles(i)%rprop%DP = dp ! particle diameter
+         particles(i)%rprop%VOLP = (4.0_RFREAL/3.0_RFREAL)*global%pi*&
                                    (0.5_RFREAL*dp)**3 ! particle volume
          ! Super Particle Loading (Real Number of particles = SPL * number of compuational particles)
-         rprop(PPICLF_R_JSPL,i) = 1.0_RFREAL
+         particles(i)%rprop%JSPL = 1.0_RFREAL
 
          ! Davin - added for burn rate model 02/22/2025
-         rmass = rprop(PPICLF_R_JVOLP,i)*rhop
-         rprop(PPICLF_R_JIDP,i) = dp           ! Initial diameter
-         rprop(PPICLF_R_JBRNT,i) = 0.0_RFREAL  ! Initial burntime
-         y(PPICLF_JMETAL,i) = rmass            ! Initial AL mass
-         y(PPICLF_JOXIDE,i) = 0.0_RFREAL       ! Initial OX mass
+         rmass = particles(i)%rprop%VOLP*rhop
+         particles(i)%rprop%IDP = dp           ! Initial diameter
+         particles(i)%rprop%BRNT = 0.0_RFREAL  ! Initial burntime
+         particles(i)%y%METAL = rmass            ! Initial AL mass
+         particles(i)%y%OXIDE = 0.0_RFREAL       ! Initial OX mass
 
          i = i + 1
       END IF
    END DO
    npart_local = i - 1
 
+   ! why are we doing this, this should already be consistent across all ranks
    CALL MPI_ALLREDUCE(xp_min,xp_min,1,MPI_RFREAL,MPI_MIN, &
         global%mpiComm,global%mpierr)
 
@@ -664,7 +666,7 @@ END IF
 
 ! Sets ppiclf_nndist, ppiclf_filter(1:3), ppiclf_y(), ppiclf_rprop()
 !(imethod (RK pick), nDimensions, iendian (IO format), .....)
-CALL ppiclf_solve_InitParticle(2,3,0,npart_local,y,rprop,filter,neighborWidth) 
+CALL ppiclf_solve_InitParticle(2,3,0,particles,filter,neighborWidth) 
 IF(global%myProcid == MASTERPROC) THEN
   PRINT*, 'x fluid min/max', x_per_min, x_per_max
   PRINT*, 'y fluid min/max', y_per_min, y_per_max
@@ -741,7 +743,9 @@ END DO
 
 IF ( global%myProcid == MASTERPROC) WRITE(*,*) "PFINIT: Calc Init VolP"
 DO i = 1, nCells
-       CALL ppiclf_solve_GetProFld(i, PPICLF_P_JPHIP, volp(i))
+      !  CALL ppiclf_solve_GetProFld(i, PPICLF_P_JPHIP, volp(i))
+       CALL ppiclf_solve_GetProFld(i, feedbackData)
+       volp(i) = feedbackData%PHIP
        IF (pRegion%mixtInput%axiFlag) THEN
            WRITE(*,*) "Need to properly implement axi-sym for phip init."
            CALL ErrorStop(global,ERR_OPTION_TYPE,__LINE__,'PPICLF:axi')
@@ -817,9 +821,9 @@ IF ( global%myProcid == MASTERPROC) then
    ENDIF
 
    print*, ' '
-   print*, "XLOC = ", y(PPICLF_JX ,1) 
-   print*, "YLOC = ", y(PPICLF_JY ,1) 
-   print*, "ZLOC = ", y(PPICLF_JZ ,1)   
+   print*, "XLOC = ", particles(1)%y%pos%vec(1) !y(PPICLF_JX ,1) 
+   print*, "YLOC = ", particles(1)%y%pos%vec(2) !y(PPICLF_JY ,1) 
+   print*, "ZLOC = ", particles(1)%y%pos%vec(3) !y(PPICLF_JZ ,1)   
 
    print*, ' '
    print*, 'Reading points.dat file...'

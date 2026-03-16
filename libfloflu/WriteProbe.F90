@@ -87,6 +87,7 @@ SUBROUTINE WriteProbe( regions,iReg )
 #ifdef PICL
 #include "PPICLF_STD.h"
   USE ppiclf_solve, only : ppiclf_solve_GetProFld
+  use ppiclf_user_particle, only: PPICLF_U_t_feedback
 #endif
 
   IMPLICIT NONE
@@ -119,6 +120,7 @@ SUBROUTINE WriteProbe( regions,iReg )
 #ifdef PICL
    REAL(KIND=8), DIMENSION(:), ALLOCATABLE :: phiP
    REAL(KIND=8),DIMENSION(:), ALLOCATABLE :: vfP,vfD,vpx,vpy,vpz,vpt
+   type(PPICLF_U_t_feedback) feedbackData
 #endif
    REAL(RFREAL) :: tester, total_vol,tester1,tester2
    REAL(RFREAL) :: testerx,testery,testerz,testert
@@ -318,25 +320,26 @@ pRegion => regions(iReg)
        testery = 0 
        testerz = 0 
        testert = 0 
-! TLJ: This needs to be checked
-!particle volume
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIP,&
-                        vfP(iCell))
-!density
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPD,&
-                        vfD(iCell))
-!x-vel
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPU,&
-                        vpx(iCell))
-!y-vel
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPV,&
-                        vpy(iCell))
-!z-vel
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPW,&
-                        vpz(iCell))
-!T-temperature
-       call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPT,&
-                        vpt(iCell))
+       ! TLJ: This needs to be checked
+       call ppiclf_solve_GetProFld(iCell, feedbackData)
+       !particle volume
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIP, vfP(iCell))
+       vfP(iCell) = feedbackData%PHIp
+       !density
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPD, vfD(iCell))
+       vfD(iCell) = feedbackData%PHIPD
+       !x-vel
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPU, vpx(iCell))
+       vpx(iCell) = feedbackData%PHIPU
+       !y-vel
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPV, vpy(iCell))
+       vpy(iCell) = feedbackData%PHIPV
+       !z-vel
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPW, vpz(iCell))
+       vpz(iCell) = feedbackData%PHIPW
+       !T-temperature
+       !  call ppiclf_solve_GetProFld(iCell, PPICLF_P_JPHIPT, vpt(iCell))
+       vpt(iCell) = feedbackData%PHIPT
 
        ! TLJ - modified 12/21/2024
        tester1 = vfP(iCell)*pRegion%grid%vol(iCell)
@@ -346,7 +349,7 @@ pRegion => regions(iReg)
        testerz = vpz(iCell)*pRegion%grid%vol(iCell)
        testert = vpt(iCell)*pRegion%grid%vol(iCell)
 
-    !number of picl particles
+      !number of picl particles
       ! TLJ - Commented out 12/21/2024
       !tester1 = tester1 / pRegion%grid%vol(iCell)
       !volFrac = pRegion%mixt%piclVF(iCell)

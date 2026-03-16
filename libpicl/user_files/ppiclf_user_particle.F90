@@ -58,38 +58,38 @@ module PPICLF_user_particle
 
     type PPICLF_U_t_feedback
         !--- Particle Volume Fraction Feedback
-        real*8                                  :: P_JPHIP
+        real*8                                  :: PHIP
         !--- x,y,z Forces Feedback
         ! x feedback force
-        real*8                                  :: JFX
+        real*8                                  :: FX
         ! y feedback force
-        real*8                                  :: JFY
+        real*8                                  :: FY
         ! z feedback force
-        real*8                                  :: JFZ
+        real*8                                  :: FZ
         !---Energy Feedback
-        real*8                                  :: JE
+        real*8                                  :: E
         !--- More VF quanities. ***NEED TO CONFIRM THEY ARE USED ***
-        real*8                                  :: JPHIPD
-        real*8                                  :: JPHIPU
-        real*8                                  :: JPHIPV
-        real*8                                  :: JPHIPW
-        real*8                                  :: JPHIPT
+        real*8                                  :: PHIPD
+        real*8                                  :: PHIPU
+        real*8                                  :: PHIPV
+        real*8                                  :: PHIPW
+        real*8                                  :: PHIPT
         !--- Reynolds Subgrid Stress Tensor (RSG)
         ! real*8                                  :: JRSG(3,3)
-        real*8                                  :: JRSG11
-        real*8                                  :: JRSG12
-        real*8                                  :: JRSG13
-        real*8                                  :: JRSG21
-        real*8                                  :: JRSG22
-        real*8                                  :: JRSG23
-        real*8                                  :: JRSG31
-        real*8                                  :: JRSG32
-        real*8                                  :: JRSG33
+        real*8                                  :: RSG11
+        real*8                                  :: RSG12
+        real*8                                  :: RSG13
+        real*8                                  :: RSG21
+        real*8                                  :: RSG22
+        real*8                                  :: RSG23
+        real*8                                  :: RSG31
+        real*8                                  :: RSG32
+        real*8                                  :: RSG33
         !--- Pseudo Turbulent Kinetic Energy
         ! real*8                                  :: JTSG(3)
-        real*8                                  :: JTSG1
-        real*8                                  :: JTSG2
-        real*8                                  :: JTSG3
+        real*8                                  :: TSG1
+        real*8                                  :: TSG2
+        real*8                                  :: TSG3
     end type PPICLF_U_t_feedback
 
     type PPICLF_t_iprop
@@ -148,6 +148,7 @@ module PPICLF_user_particle
         module procedure solADDScalar
         module procedure interpADDInterp
         module procedure interpADDScalar
+        module procedure feedbackADDfeedback
     end interface
     interface operator(-)
         module procedure solSUBVec
@@ -158,6 +159,7 @@ module PPICLF_user_particle
     interface operator(*)
         module procedure solMULTScalar
         module procedure interpMULTScalar
+        module procedure feedbackMULTscalar
     end interface
     interface operator(/)
         module procedure solDIVScalar
@@ -354,6 +356,63 @@ module PPICLF_user_particle
         resInterp%DPVDX = i1%DPVDX  / i2
         resInterp%SDO   = i1%SDO    / i2
     end function interpDIVScalar
+
+    ! feedback addition overloads
+    pure module function feedbackADDfeedback(f1, f2) result(resFDBK)
+        type(PPICLF_U_t_feedback), intent(in) :: f1, f2
+        type(PPICLF_U_t_feedback) :: resFDBK
+        resFDBK%PHIP    = f1%PHIP   + f2%PHIP
+        resFDBK%FX      = f1%FX     + f2%FX
+        resFDBK%FY      = f1%FY     + f2%FY
+        resFDBK%FZ      = f1%FZ     + f2%FZ
+        resFDBK%E       = f1%E      + f2%E
+        resFDBK%PHIPD   = f1%PHIPD  + f2%PHIPD
+        resFDBK%PHIPU   = f1%PHIPU  + f2%PHIPU
+        resFDBK%PHIPV   = f1%PHIPV  + f2%PHIPV
+        resFDBK%PHIPW   = f1%PHIPW  + f2%PHIPW
+        resFDBK%PHIPT   = f1%PHIPT  + f2%PHIPT
+        resFDBK%RSG11   = f1%RSG11  + f2%RSG11
+        resFDBK%RSG12   = f1%RSG12  + f2%RSG12
+        resFDBK%RSG13   = f1%RSG13  + f2%RSG13
+        resFDBK%RSG21   = f1%RSG21  + f2%RSG21
+        resFDBK%RSG22   = f1%RSG22  + f2%RSG22
+        resFDBK%RSG23   = f1%RSG23  + f2%RSG23
+        resFDBK%RSG31   = f1%RSG31  + f2%RSG31
+        resFDBK%RSG32   = f1%RSG32  + f2%RSG32
+        resFDBK%RSG33   = f1%RSG33  + f2%RSG33
+        resFDBK%TSG1    = f1%TSG1   + f2%TSG1
+        resFDBK%TSG2    = f1%TSG2   + f2%TSG2
+        resFDBK%TSG3    = f1%TSG3   + f2%TSG3
+    end function feedbackADDfeedback
+
+    ! feedback multiplication overloads
+    pure module function feedbackMULTscalar(f1, s) result(resFDBK)
+        type(PPICLF_U_t_feedback), intent(in) :: f1
+        real*8, intent(in) :: s
+        type(PPICLF_U_t_feedback) :: resFDBK
+        resFDBK%PHIP    = f1%PHIP   * s
+        resFDBK%FX      = f1%FX     * s
+        resFDBK%FY      = f1%FY     * s
+        resFDBK%FZ      = f1%FZ     * s
+        resFDBK%E       = f1%E      * s
+        resFDBK%PHIPD   = f1%PHIPD  * s
+        resFDBK%PHIPU   = f1%PHIPU  * s
+        resFDBK%PHIPV   = f1%PHIPV  * s
+        resFDBK%PHIPW   = f1%PHIPW  * s
+        resFDBK%PHIPT   = f1%PHIPT  * s
+        resFDBK%RSG11   = f1%RSG11  * s
+        resFDBK%RSG12   = f1%RSG12  * s
+        resFDBK%RSG13   = f1%RSG13  * s
+        resFDBK%RSG21   = f1%RSG21  * s
+        resFDBK%RSG22   = f1%RSG22  * s
+        resFDBK%RSG23   = f1%RSG23  * s
+        resFDBK%RSG31   = f1%RSG31  * s
+        resFDBK%RSG32   = f1%RSG32  * s
+        resFDBK%RSG33   = f1%RSG33  * s
+        resFDBK%TSG1    = f1%TSG1   * s
+        resFDBK%TSG2    = f1%TSG2   * s
+        resFDBK%TSG3    = f1%TSG3   * s
+    end function feedbackMULTscalar
     ! checks for any nan values in an interp object
     pure function interpHasNAN(interp)  result(b)
         type(PPICLF_U_t_interp), intent(in) :: interp

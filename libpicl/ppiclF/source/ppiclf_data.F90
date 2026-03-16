@@ -2,7 +2,7 @@
 ! PPICLF_STD has been modified to include PPICLF_USER.h
 
 module ppiclf_data
-    use ppiclf_user_particle, only: PPICLF_U_t_interp, PPICLF_U_t_interp
+    use ppiclf_user_particle, only: PPICLF_U_t_interp, PPICLF_U_t_interp, PPICLF_U_t_feedback
     use ppiclf_m_wrapped_types, only: ppiclf_t_fluidCell_wrapped, ppiclf_t_interp_wrapped, ppiclf_t_feedback_wrapped
     implicit none
 
@@ -42,13 +42,14 @@ module ppiclf_data
     ! Projected info for the cells in the local rank,
     ! in the correct order for access by the fluid solver (via solve_GetProFld)
     ! ie same ordering as was originally given by InitOverlapGrid
-    REAL*8 PPICLF_PRO_FLD(PPICLF_LEE,PPICLF_LRP_PRO)
+    ! REAL*8 PPICLF_PRO_FLD(PPICLF_LEE,PPICLF_LRP_PRO)
+    type(PPICLF_U_t_feedback) ppiclf_pro_fld(PPICLF_LEE)
     
     ! projection info for cells, used to transfer all projection info back to home rank
     ! before transfer, particle feed back is projected, into this array
     ! after transfer, the order is wrong, and there can be multiple indicies for a given cell,
     ! ppiclf_cell_map_proj is used to combine all the data and put it in the proper order in PPICLF_PRO_FLD
-    REAL*8 PPICLF_PRO_FLD_PICL(PPICLF_LRP_PRO,PPICLF_LEE)
+    type(ppiclf_t_feedback_wrapped) PPICLF_PRO_FLD_PICL(PPICLF_LEE)
     
     ! Holds the interpolation data passed in by the driver files until solve_InterpField is called by solve_InitSolve or solve_SetYdot
     ! cell indexing matches PPICLF_FLUID_GRID
@@ -110,7 +111,7 @@ module ppiclf_data
     !  I think they should be the same at this point in time
     ! Used to transfer projection data back to the rank where the cells came from,
     ! and after the transfer maps the projection data back to its original cell
-    INTEGER*4 PPICLF_CELL_MAP_PROJ(PPICLF_LRMAX,PPICLF_LEE)
+    ! INTEGER*4 PPICLF_CELL_MAP_PROJ(PPICLF_LRMAX,PPICLF_LEE)
 
     ! # of mapped fluid cells recieved from other ranks
     INTEGER*4 PPICLF_NCELLS_FV2PICL
@@ -126,7 +127,7 @@ module ppiclf_data
     ! = ppiclf_ncells_FV2PICL
     ! Used for array indexing when setting up projection data for transfer
     ! After transfer, used when setting ppiclf_pro_fld from recieved data
-    INTEGER*4 PPICLF_NCELLS_PROJ
+    ! INTEGER*4 PPICLF_NCELLS_PROJ
 
     ! number of cells in PART2CELL_MAP and PART2CELL_dist for a given particle
     INTEGER*4 PPICLF_NPART2CELL(PPICLF_LPART)
@@ -137,8 +138,8 @@ module ppiclf_data
     
 
 
-    INTEGER*4 PPICLF_INT_ICNT                   ! number of fields that have had fluid data passed
-    INTEGER*4 PPICLF_INT_MAP(PPICLF_LRP_INT)    ! map from the index of ppiclf_int_fluid_input to index of rprop
+    ! INTEGER*4 PPICLF_INT_ICNT                   ! number of fields that have had fluid data passed
+    ! INTEGER*4 PPICLF_INT_MAP(PPICLF_LRP_INT)    ! map from the index of ppiclf_int_fluid_input to index of rprop
 
 
     ! Originally PPICLF_OPT.h

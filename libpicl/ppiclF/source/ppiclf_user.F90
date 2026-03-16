@@ -43,6 +43,9 @@ module ppiclf_user
         module pure subroutine ppiclf_user_ZeroInterp(interp)
             type(PPICLF_U_t_interp), intent(inout) :: interp
         end subroutine ppiclf_user_ZeroInterp
+        module pure subroutine ppiclf_user_ZeroFeedback(feedback)
+            type(PPICLF_U_t_feedback), intent(inout) :: feedback
+        end subroutine ppiclf_user_ZeroFeedback
     end interface
 end module ppiclf_user
 

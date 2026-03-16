@@ -4,11 +4,11 @@ module ppiclf_solve
     use mpi
     ! particle data
     use ppiclf_data, only: ppiclf_npart
-    use ppiclf_m_particledata, only: ppiclf_parts, ppiclf_gparts
+    use ppiclf_m_particledata, only: ppiclf_parts, ppiclf_gparts, ppiclf_part_feedback
     ! grid data
     use ppiclf_data, only: PPICLF_PRO_FLD, PPICLF_PRO_FLD_PICL, PPICLF_INT_FLD_INPUT, PPICLF_INT_FLD, PPICLF_PICL_GRID, PPICLF_PART2CELL_DIST
-    use ppiclf_data, only: PPICLF_CELL_MAP, PPICLF_CELL_MAP_PROJ, PPICLF_NCELLS_FV2PICL, PPICLF_NCELLS_FV2PICL_sent, PPICLF_NCELLS_PROJ, PPICLF_PART2CELL_MAP, PPICLF_NPART2CELL
-    use ppiclf_data, only: ppiclf_nfvcells, ppiclf_int_icnt, ppiclf_int_map, ppiclf_xdrange
+    use ppiclf_data, only: PPICLF_CELL_MAP, PPICLF_NCELLS_FV2PICL, PPICLF_NCELLS_FV2PICL_sent, PPICLF_PART2CELL_MAP, PPICLF_NPART2CELL
+    use ppiclf_data, only: ppiclf_nfvcells, ppiclf_xdrange
     use ppiclf_data, only: ppiclf_cell_map_sendcounts, ppiclf_cell_map_senddisps, ppiclf_cell_map_recvcounts, ppiclf_cell_map_recvdisps
     ! particle options variables
     use ppiclf_data, only: ppiclf_rk3coef, ppiclf_remove_particle, ppiclf_interp_dchk, ppiclf_lintp, ppiclf_overlap, ppiclf_binchanged, ppiclf_imethod, ppiclf_dt, ppiclf_cycle, ppiclf_iostep, ppiclf_time, ppiclf_lcomm
@@ -36,8 +36,9 @@ module ppiclf_solve
     use ppiclf_initsolve, only: ppiclf_solve_InitZero
     use ppiclf_m_particledata, only: CopyRealToGhost
 
-    use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_YdotParticle
+    use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_YdotParticle, ppiclf_user_SetYdotInit, ppiclf_user_SetYdotFinal, ppiclf_user_ZeroParticle, ppiclf_user_ZeroInterp, ppiclf_user_ZeroFeedback
     use ppiclf_user_particle
+    use ppiclf_m_transfers
     implicit none
     private
 
@@ -304,7 +305,7 @@ module ppiclf_solve
         ppiclf_nwall    = 0
         ppiclf_iwallm   = 0
 
-        PPICLF_INT_ICNT = 0
+        ! PPICLF_INT_ICNT = 0
 
         RETURN
     END SUBROUTINE ppiclf_solve_InitParam
@@ -1128,13 +1129,13 @@ module ppiclf_solve
         ! Copies Grid Cell ID for all Rocflu elements that map
         ! to ppiclf domain for GSLIB Transfer.  This copy is from
         ! MapOverlapGrid.
-        CALL ppiclf_solve_InitInterp
+        ! CALL ppiclf_solve_InitInterp
 
         ! Makes array (ppiclf_int_fld_input) of all rprop data
         ! for grid cellss that map to ppiclf domain.
-        DO j=1,PPICLF_INT_ICNT
-            CALL ppiclf_solve_InterpField(j)
-        END DO
+        ! DO j=1,PPICLF_INT_ICNT
+        !     CALL ppiclf_solve_InterpField(j)
+        ! END DO
     
         ! Transfers ppiclf_er_mapc & ppiclf_int_fld for all Rocflu Grid
         ! cells that map to ppiclf domain.
@@ -1146,6 +1147,7 @@ module ppiclf_solve
         PPICLF_TInterpolation = 0.0d0 
         tstart = MPI_WTIME()
 #endif
+        call ppiclf_user_SetYdotInit
 
         ! loop over all particles, interpolate for that particle, setYdot, handle feedback
         do i = 1, ppiclf_npart
@@ -1163,6 +1165,7 @@ module ppiclf_solve
 #endif
             CALL ppiclf_user_YdotParticle(i, ppiclf_parts(i), interp, feedback, ierr)
         end do ! i: ppiclf_npart
+        call ppiclf_user_SetYdotFinal
         RETURN
     END SUBROUTINE ppiclf_solve_SetYdot
 
@@ -1199,9 +1202,9 @@ module ppiclf_solve
 
         ! Makes array (ppiclf_int_fld_input) of all rprop data
         ! for grid cellss that map to ppiclf domain.
-        DO j=1,PPICLF_INT_ICNT
-            CALL ppiclf_solve_InterpField(j)
-        END DO
+        ! DO j=1,PPICLF_INT_ICNT
+        !     CALL ppiclf_solve_InterpField(j)
+        ! END DO
         
         ! Transfers ppiclf_er_mapc & ppiclf_int_fld for all Rocflu Grid
         ! cells that map to ppiclf domain.
@@ -1225,7 +1228,7 @@ module ppiclf_solve
         ! CALL ppiclf_solve_Interpolate
 
         ! Reset for next iteration. Input from rocpicl/PICL_TEMP_Runge
-        PPICLF_INT_ICNT = 0
+        ! PPICLF_INT_ICNT = 0
 
         ! Project particle feedback to fluid solver grid
         CALL ppiclf_solve_ProjectParticleGrid
@@ -1971,33 +1974,43 @@ module ppiclf_solve
     END SUBROUTINE ppiclf_solve_RemoveParticle
 
     SUBROUTINE ppiclf_solve_ProjectParticleGrid
-        ! ! Called from ppiclf_solve_InitSolve and ppiclf_solve_PostTimestep
-        ! ! Internal:
-        ! INTEGER*4 i, j, ip, ie, nCellProj, CellID, nl, nii, njj, nrr, nkey(2), iee
-        ! REAL*8    CellVol, GaussianConst, dist, w(27), wsum, x_norm, y_norm, z_norm, PI, eps
-        ! LOGICAL   partl 
+        ! Called from ppiclf_solve_InitSolve and ppiclf_solve_PostTimestep
+        ! Internal:
+        INTEGER*4 i, j, ip, ie, nCellProj, CellID, nl, nii, njj, nrr, nkey(2), iee
+        REAL*8    CellVol, GaussianConst, dist, w(27), wsum, x_norm, y_norm, z_norm, PI, eps
+        LOGICAL   partl 
+        type(ppiclf_t_feedback_wrapped), allocatable :: feedbackRecvBuff(:)
 
 #ifdef PERF
         REAL*8    tstart, tfinal
 #endif
-        ! PI = 4*ATAN(1.0D0)
-        ! GaussianConst = 2.305D0 ! Distribution over 2 cell widths
-        ! ppiclf_pro_fld_picl = 0.0d0
-        ! eps = 1.0D-60
-        ! DO ip=1,ppiclf_npart
-        !     ! Update volume fraction for feedback - important for 1st RK
-        !     ! step at time = 0.0
-        !     @{USEPARTICLE(ppiclf_parts(ip)%feedback%P_JPHIP)}@ = @{USEPARTICLE(ppiclf_parts(ip)%rprop%VOLP)}@ * @{USEPARTICLE(ppiclf_parts(ip)%rprop%JSPL)}@
-        !     nCellProj = ppiclf_nPart2Cell(ip)
-        !     wsum = 0.0D0
-        !     ! Loop to find individual cell weightings
-        !     DO i = 1,nCellProj
-        !         CellID = ppiclf_Part2Cell_map(ip,i) 
-        !         dist = ppiclf_Part2Cell_dist(ip,i) + eps
-        !         CellVol = ppiclf_picl_grid(CellID)%FluidCell(l)
-        !         w(i) = ABS(CellVol*EXP(-GaussianConst*(dist**2) / (CellVol**(2.0D0/3.0D0))))
-        !         wsum = wsum + w(i)
-        !     END DO !i
+        PI = 4*ATAN(1.0D0)
+        GaussianConst = 2.305D0 ! Distribution over 2 cell widths
+        eps = 1.0D-60
+
+        ! zero projection data array
+        do ie=1,ppiclf_ncells_FV2PICL
+            ppiclf_pro_fld_picl(ie)%homeRank = ppiclf_picl_grid(ie)%homeRank
+            ppiclf_pro_fld_picl(ie)%homeCellIndex = ppiclf_picl_grid(ie)%homeCellIndex
+            call ppiclf_user_ZeroFeedback(ppiclf_pro_fld_picl(ie)%feedback)
+        end do
+
+
+        DO ip=1,ppiclf_npart
+            ! Update volume fraction for feedback - important for 1st RK
+            ! step at time = 0.0
+            ! @{USEPARTICLE(ppiclf_parts(ip)%feedback%P_JPHIP)}@ = @{USEPARTICLE(ppiclf_parts(ip)%rprop%VOLP)}@ * @{USEPARTICLE(ppiclf_parts(ip)%rprop%JSPL)}@
+            ppiclf_part_feedback(ip)%PHIP = ppiclf_parts(ip)%rprop%VOLP * ppiclf_parts(ip)%rprop%JSPL
+            nCellProj = ppiclf_nPart2Cell(ip)
+            wsum = 0.0D0
+            ! Loop to find individual cell weightings
+            DO i = 1,nCellProj
+                CellID = ppiclf_Part2Cell_map(ip,i) 
+                dist = ppiclf_Part2Cell_dist(ip,i) + eps
+                CellVol = ppiclf_picl_grid(CellID)%FluidCell(7)
+                w(i) = ABS(CellVol*EXP(-GaussianConst*(dist**2) / (CellVol**(2.0D0/3.0D0))))
+                wsum = wsum + w(i)
+            END DO !i
 #ifdef TEST
             ! These are same feedback equations used in unit testing
             x_norm = (ppiclf_y(PPICLF_JX, ip) - ppiclf_binb(1)) / (ppiclf_binb(2) - ppiclf_binb(1))
@@ -2017,18 +2030,23 @@ module ppiclf_solve
 !                 END DO !i
 !             END DO !j
 ! #:endfor
-!         END DO !ip
+            do i = 1, nCellProj
+                CellID = ppiclf_Part2Cell_map(ip, i)
+                ppiclf_pro_fld_picl(CellID)%feedback = ppiclf_pro_fld_picl(CellID)%feedback + ppiclf_part_feedback(ip) * (w(i) / wsum)
+            end do
+        END DO !ip
 
-!         ! Now send feedback information to processor that contains 
-!         ! the cell for the fluid solver
+        ! Now send feedback information to processor that contains 
+        ! the cell for the fluid solver
 
-!         ppiclf_nCells_Proj = ppiclf_nCells_FV2PICL
-!         DO i = 1,ppiclf_nCells_Proj
-!             CALL ppiclf_icopy(ppiclf_cell_map_proj(1,i),ppiclf_cell_map_interp(1,i),PPICLF_LRMAX)
-!         END DO
+        ! ppiclf_nCells_Proj = ppiclf_nCells_FV2PICL
+        ! DO i = 1,ppiclf_nCells_Proj
+        !     CALL ppiclf_icopy(ppiclf_cell_map_proj(1,i),ppiclf_cell_map_interp(1,i),PPICLF_LRMAX)
+        ! END DO
+        allocate(feedbackRecvBuff(ppiclf_nCells_FV2PICL_Sent))
 
-!         nl = 0
-!         nii = PPICLF_LRMAX
+        ! nl = 0
+        ! nii = PPICLF_LRMAX
         ! njj = 2 ! original processor with cell for fluid grid
         ! nrr = PPICLF_LRP_PRO
         ! nkey(1) = 2
@@ -2053,38 +2071,47 @@ module ppiclf_solve
         !     ,partl,nl                           & ! Logical data
         !     ,ppiclf_pro_fld_picl,nrr            & ! Real data
         !     ,nkey,2)                              ! Sorting order
+        call ppiclf_alltoallv(ppiclf_pro_fld_picl, PPICLF_CELL_MAP_RECVCOUNTS, PPICLF_CELL_MAP_RECVDISPS, feedbackRecvBuff, PPICLF_CELL_MAP_SENDCOUNTS, PPICLF_CELL_MAP_SENDDISPS, ppiclf_t_feedback_wrapped_MPIH, ppiclf_comm, ppiclf_ncells_fv2picl_sent)
+        ! (sendbuf, sendcounts, senddispls, recvbuf, recvcounts, recvdispls, type_handle, comm, maxrecvtotal)
 
 #ifdef PERF
         tfinal = MPI_WTIME()
         PPICLF_TDataTransfers = PPICLF_TDataTransfers + (tfinal - tstart)
 #endif
 
-        ! ppiclf_pro_fld = 0.0d0
-        ! DO ie=1,ppiclf_nCells_Proj
-        !     iee = ppiclf_cell_map_Proj(1,ie)
-        !     DO j=1,PPICLF_LRP_PRO
-        !         ! Mapped to the fluid solver domain
-        !         ppiclf_pro_fld(iee,j) = ppiclf_pro_fld(iee,j) + ppiclf_pro_fld_picl(j,ie)
-        !     END DO
-        ! END DO
+        
 
+        do ie=1,PPICLF_LEE
+            call ppiclf_user_ZeroFeedback(ppiclf_pro_fld(ie))
+        end do
+
+        DO ie=1,ppiclf_nCells_FV2PICL_Sent ! we should have gotten back feedback data for the exact number of cells that we sent out
+            iee = feedbackRecvBuff(ie)%homeCellIndex ! ppiclf_cell_map_Proj(1,ie)
+            ! DO j=1,PPICLF_LRP_PRO
+            !     ! Mapped to the fluid solver domain
+            !     ppiclf_pro_fld(iee,j) = ppiclf_pro_fld(iee,j) + ppiclf_pro_fld_picl(j,ie)
+            ! END DO
+            ppiclf_pro_fld(iee) = ppiclf_pro_fld(iee) + feedbackRecvBuff(ie)%feedback
+        END DO
+        deallocate(feedbackRecvBuff)
         RETURN
     END SUBROUTINE ppiclf_solve_ProjectParticleGrid
 
-    SUBROUTINE ppiclf_solve_GetProFld(e,m,fld)
+    SUBROUTINE ppiclf_solve_GetProFld(e,fld)
         !
         ! Input:
         !
-        INTEGER*4 e,m
+        INTEGER*4 e
         ! e - fluid_grid element number
         ! m - projection property index
 
         !
         ! Output:
         !
-        REAL*8, intent(out) :: fld
+        ! REAL*8, intent(out) :: fld
+        type(PPICLF_U_t_feedback), intent(out) :: fld
         !
-        fld = ppiclf_pro_fld(e,m)
+        fld = ppiclf_pro_fld(e)
 
         RETURN
     END SUBROUTINE ppiclf_solve_GetProFld

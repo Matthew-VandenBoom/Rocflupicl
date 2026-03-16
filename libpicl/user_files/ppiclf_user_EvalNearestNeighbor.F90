@@ -66,7 +66,8 @@ subroutine ppiclf_user_EvalNearestNeighbor(i,particle, interp, j, neighbor, fam,
     type(PPICLF_U_t_ghostParticle) :: neighbor ! neighbor data, in a ppiclf_U_t_ghostParticle struct, regardless of if it is actually a ghost particle.
     ! input for variables from YdotParticle
     type(PPICLF_t_realNVec), intent(inout) :: fam, Wdot_neighbor_mean, upmean, u2pmean
-    real*8, intent(inout) :: R_pair(6,6), phipmean, rmass, rphip, rpi
+    real*8, intent(inout) :: R_pair(6,6), phipmean
+    real*8, intent(in) :: rmass, rphip, rpi
     integer*4, intent(inout) :: icpmean, nneighbors
 
     !

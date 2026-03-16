@@ -8,6 +8,7 @@ module ppiclf_m_particledata
     type(PPICLF_U_t_particle), save :: ppiclf_parts(PPICLF_LPART)
     type(PPICLF_U_t_ghostParticle), save :: ppiclf_gparts(PPICLF_LPART_GP)
 
+    type(PPICLF_U_t_feedback), save :: ppiclf_part_feedback(PPICLF_LPART)
     contains
 
     ! TODO: Move this to a user file

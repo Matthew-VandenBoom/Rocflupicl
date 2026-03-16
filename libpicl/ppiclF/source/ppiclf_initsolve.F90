@@ -22,7 +22,7 @@ module ppiclf_initsolve
     ! used functions/subroutines
     use ppiclf_op, only: ppiclf_exittr
 
-    use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_ZeroParticle
+    use ppiclf_user, only: ppiclf_user_InitZero, ppiclf_user_ZeroParticle, ppiclf_user_ZeroInterp
 
     implicit none
     private
@@ -46,7 +46,7 @@ module ppiclf_initsolve
         ppiclf_npart = 0
         ! zero'ing grid properties for interpolation
         DO ie=1,PPICLF_LEE
-            call ppiclf_user_ZeroInterp(ppiclf_int_fld(ie))
+            call ppiclf_user_ZeroInterp(ppiclf_int_fld(ie)%interp)
             ! ppiclf_int_fld(ie) = 0.0D0
         END DO
 

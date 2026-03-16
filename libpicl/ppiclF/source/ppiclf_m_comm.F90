@@ -28,7 +28,7 @@ module ppiclf_m_comm
     use ppiclf_io, only: ppiclf_io_outputdiaggrid
     use ppiclf_m_particledata, only: CopyRealToGhost
     use ppiclf_user_particle, only: ppiclf_user_Create_MPI_Derivedtypes, ppiclf_user_Destroy_MPI_Derivedtypes
-    use ppiclf_m_particle_ops, only: ppiclf_particles_GroupBy, ppiclf_particles_GroupByIntoArray, GroupByKeys
+    use ppiclf_m_particle_ops, only: ppiclf_particles_GroupBy, ppiclf_particles_GroupByIntoArray, ppiclf_ghostParticles_GroupBy, ppiclf_ghostParticles_GroupByIntoArray, GroupByKeys
     use ppiclf_m_transfers, only: ppiclf_alltoallv
     ! user functions
     ! use ppiclf_user, only:

@@ -151,6 +151,7 @@ $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_m_user_Force
 $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_user_subbinMap.o
 $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_m_user_RFLUdata.o
 $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_m_user_data.o
+$(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.o
 
 $(BUILD_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.o: $(BUILD_ROOT_USER)/Added_Mass/ppiclf_user_AddedMass_functions.o
 $(BUILD_ROOT_USER)/ppiclf_user_EvalNearestNeighbor.o: $(BUILD_ROOT_USER)/ppiclf_m_user_RFLUdata.o

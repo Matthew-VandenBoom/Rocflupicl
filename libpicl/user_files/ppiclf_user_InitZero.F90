@@ -82,5 +82,30 @@ submodule (ppiclf_user) ppiclf_user_InitZero_imp
         rprop%XIPERP        =0.0d0
         rprop%XIT           =0.0d0
     end subroutine Zerorprop
+
+    module procedure ppiclf_user_ZeroFeedback
+        feedback%PHIP   = 0.0d0
+        feedback%FX     = 0.0d0
+        feedback%FY     = 0.0d0
+        feedback%FZ     = 0.0d0
+        feedback%E      = 0.0d0
+        feedback%PHIPD  = 0.0d0
+        feedback%PHIPU  = 0.0d0
+        feedback%PHIPV  = 0.0d0
+        feedback%PHIPW  = 0.0d0
+        feedback%PHIPT  = 0.0d0
+        feedback%RSG11  = 0.0d0
+        feedback%RSG12  = 0.0d0
+        feedback%RSG13  = 0.0d0
+        feedback%RSG21  = 0.0d0
+        feedback%RSG22  = 0.0d0
+        feedback%RSG23  = 0.0d0
+        feedback%RSG31  = 0.0d0
+        feedback%RSG32  = 0.0d0
+        feedback%RSG33  = 0.0d0
+        feedback%TSG1   = 0.0d0
+        feedback%TSG2   = 0.0d0
+        feedback%TSG3   = 0.0d0
+    end procedure ppiclf_user_ZeroFeedback
 end submodule ppiclf_user_InitZero_imp
 

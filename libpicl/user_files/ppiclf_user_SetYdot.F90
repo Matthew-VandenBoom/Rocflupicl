@@ -77,6 +77,7 @@ submodule (ppiclf_user) ppiclf_user_SetYdot_imp
     use ppiclf_m_user_ForceModels, only: ppiclf_user_VU_Rocflu, ppiclf_user_UpdatePlag, ppiclf_user_ShiftUnsteadyData
     use ppiclf_m_user_ForceModels, only: ppiclf_user_AM_Briney_Unary, ppiclf_user_AM_Briney_Binary, ppiclf_user_AM_Parmar
     use ppiclf_m_user_SubbinMap, only: ppiclf_user_subbinMap
+    use ppiclf_m_user_EvalNearestNeighbor, only: ppiclf_user_EvalNearestNeighbor
 
     use ppiclf_user_random
     implicit none
@@ -497,7 +498,7 @@ module procedure ppiclf_user_YdotParticle
             
             ! if the search did find a neigbor, run EvalNearestNeighbor on it
             call ppiclf_user_EvalNearestNeighbor(ip, particle, interp, searchResult%j, searchResult%neighbor, &
-                fam, Wdot_neighbor_mean, R_pair, upmean, u2pmean, icpmean, phipmean, & ! added mass parameters
+                fam, Wdot_neighbor_mean, R_pair, upmean, u2pmean, icpmean, phipmean, &
                 nneighbors, rmass, rphip, rpi)
         end do
     end if ! end Step 1b; nearestneighbor
@@ -737,17 +738,17 @@ module procedure ppiclf_user_YdotParticle
 
 
     IF(feedback_flag==0) THEN
-        feedback%JFX = 0.0d0 
-        feedback%JFY = 0.0d0 
-        feedback%JFZ = 0.0d0 
-        feedback%JE  = 0.0d0
+        feedback%FX = 0.0d0 
+        feedback%FY = 0.0d0 
+        feedback%FZ = 0.0d0 
+        feedback%E  = 0.0d0
     END IF
 
     IF(feedback_flag==1) THEN
         ! Momentum equations feedback terms
-        feedback%JFX = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(1))*rmass - fc%vec(1))
-        feedback%JFY = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(2))*rmass - fc%vec(2))
-        feedback%JFZ = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(3))*rmass - fc%vec(3))
+        feedback%FX = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(1))*rmass - fc%vec(1))
+        feedback%FY = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(2))*rmass - fc%vec(2))
+        feedback%FZ = (particle%rprop%JSPL) * ((particle%ydot%vel%vec(3))*rmass - fc%vec(3))
 
         ! Energy equation feedback term
         ! 09/19/2025 - Thierry - Added Lift force
@@ -763,7 +764,7 @@ module procedure ppiclf_user_YdotParticle
         !         tauy_hydro*(@{USEPARTICLE(particle%y%ang_vel%Y)}@)       +               &
         !         tauz_hydro*(@{USEPARTICLE(particle%y%ang_vel%Z)}@)       +               &
         !         qq )
-        feedback%JE = particle%rprop%JSPL * (                           &
+        feedback%E = particle%rprop%JSPL * (                           &
             nvecComponentSum((fqs + fvu + lift) * particle%y%vel)   +   &
             nvecComponentSum(fam * interp%U)                        +   &
             nvecComponentSum(tau_hydro*particle%y%ang_vel)          +   &
@@ -777,35 +778,35 @@ module procedure ppiclf_user_YdotParticle
             ! (fqsy+fvuy+famy+lifty) * (@{USEPARTICLE(particle%y%Vel%Y)}@)     +       &
             ! (fqsz+fvuz+famz+liftz) * (@{USEPARTICLE(particle%y%Vel%Z)}@)     +       &
 
-            feedback%JE = particle%rprop%JSPL * (nvecComponentSum((fqs + fvu + fam + lift) * particle%y%vel) + qq )
+            feedback%E = particle%rprop%JSPL * (nvecComponentSum((fqs + fvu + fam + lift) * particle%y%vel) + qq )
         ELSE
             Rsg   = 0.0D0
             T_par = 0.0D0
         END IF ! pseudoTurb_flag
         ! 07/21/2025 - Thierry - Added Reynolds Subgrid Stress Feedback
-        feedback%JRSG11 = Rsg(1,1) * (particle%rprop%JSPL)
-        feedback%JRSG12 = Rsg(1,2) * (particle%rprop%JSPL)
-        feedback%JRSG13 = Rsg(1,3) * (particle%rprop%JSPL)
-        feedback%JRSG21 = Rsg(2,1) * (particle%rprop%JSPL)
-        feedback%JRSG22 = Rsg(2,2) * (particle%rprop%JSPL)
-        feedback%JRSG23 = Rsg(2,3) * (particle%rprop%JSPL)
-        feedback%JRSG31 = Rsg(3,1) * (particle%rprop%JSPL)
-        feedback%JRSG32 = Rsg(3,2) * (particle%rprop%JSPL)
-        feedback%JRSG33 = Rsg(3,3) * (particle%rprop%JSPL)
+        feedback%RSG11 = Rsg(1,1) * (particle%rprop%JSPL)
+        feedback%RSG12 = Rsg(1,2) * (particle%rprop%JSPL)
+        feedback%RSG13 = Rsg(1,3) * (particle%rprop%JSPL)
+        feedback%RSG21 = Rsg(2,1) * (particle%rprop%JSPL)
+        feedback%RSG22 = Rsg(2,2) * (particle%rprop%JSPL)
+        feedback%RSG23 = Rsg(2,3) * (particle%rprop%JSPL)
+        feedback%RSG31 = Rsg(3,1) * (particle%rprop%JSPL)
+        feedback%RSG32 = Rsg(3,2) * (particle%rprop%JSPL)
+        feedback%RSG33 = Rsg(3,3) * (particle%rprop%JSPL)
 
-        feedback%JTSG1 = T_par(1) * particle%rprop%JSPL
-        feedback%JTSG2 = T_par(2) * particle%rprop%JSPL
-        feedback%JTSG3 = T_par(3) * particle%rprop%JSPL
+        feedback%TSG1 = T_par(1) * particle%rprop%JSPL
+        feedback%TSG2 = T_par(2) * particle%rprop%JSPL
+        feedback%TSG3 = T_par(3) * particle%rprop%JSPL
 
     END IF ! Feedback flag
 
     ! Update volume fraction feedback quantities with feedback on or off
-    feedback%P_JPHIP  = (particle%rprop%VOLP) * (particle%rprop%JSPL)
-    feedback%JPHIPD   = (particle%rprop%VOLP) * (particle%rprop%RHOP)
-    feedback%JPHIPU   = (particle%rprop%VOLP) * (particle%y%Vel%vec(1))
-    feedback%JPHIPV   = (particle%rprop%VOLP) * (particle%y%Vel%vec(2))
-    feedback%JPHIPW   = (particle%rprop%VOLP) * (particle%y%Vel%vec(3))
-    feedback%JPHIPT   = (particle%rprop%VOLP) * (particle%y%T)
+    feedback%PHIP    = (particle%rprop%VOLP) * (particle%rprop%JSPL)
+    feedback%PHIPD   = (particle%rprop%VOLP) * (particle%rprop%RHOP)
+    feedback%PHIPU   = (particle%rprop%VOLP) * (particle%y%Vel%vec(1))
+    feedback%PHIPV   = (particle%rprop%VOLP) * (particle%y%Vel%vec(2))
+    feedback%PHIPW   = (particle%rprop%VOLP) * (particle%y%Vel%vec(3))
+    feedback%PHIPT   = (particle%rprop%VOLP) * (particle%y%T)
 
 
     ! Step 12: If stationary, don't move particles. Feedback can still be on
