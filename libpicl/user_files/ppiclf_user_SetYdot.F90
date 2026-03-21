@@ -60,7 +60,9 @@ submodule (ppiclf_user) ppiclf_user_SetYdot_imp
     use ppiclf_data, only:
     ! AngularPeriodic variables (?)(SEE NOTE IN ppiclf_data)
     use ppiclf_data, only:
-
+#ifdef TEST
+    use ppiclf_data, only: particle_nn, PPICLF_TOTNNDIST
+#endif 
 
     use ppiclf_m_user_data
     use ppiclf_m_user_RFLUdata
@@ -85,6 +87,10 @@ submodule (ppiclf_user) ppiclf_user_SetYdot_imp
 
 module procedure ppiclf_user_SetYdotInit
     integer*4 i
+#ifdef TEST
+    type(PPICLF_t_NNSB_Search_Data) searchInfo
+    type(ppiclf_t_neighborInfo) searchResult
+#endif
     if (allocated(SBin_map)) deallocate(SBin_map)
     if (allocated(SBin_counter)) deallocate(SBin_counter)
 
@@ -115,12 +121,14 @@ module procedure ppiclf_user_SetYdotInit
     ! Count every iStage=1 for debug output
     if (iStage .eq. 1) idebug = idebug + 1
 
+#ifndef TEST
     ! Print dt and time every time step
     if (ppiclf_nid==0) then
         if (istage .eq. 1) then
             write(6,'(a,2x,2(1pe14.6),2x,i3)') '*** PPICLF dt, time = ', ppiclf_dt,ppiclf_time
         endif
     endif
+#endif
 
     burnrate_model = 0
     if (burnrate_flag .gt. 0) then
@@ -147,7 +155,18 @@ module procedure ppiclf_user_SetYdotInit
     ! subroutine.  The full subroutine is called to ensure that
     ! the array initialization is correct.
     DO i = 1,ppiclf_npart
-        CALL ppiclf_solve_NearestNeighborSB(i,tot_SBin,SBin_counter,SBin_map,n_SBin,i_Bin)
+        PARTICLE_NN(i) = 0 
+        PPICLF_TOTNNDIST(i) = 0.0D0
+        call ppiclf_solve_FindNearestNeighborSB_Start(i,tot_SBin,SBin_counter,SBin_map,n_SBin,i_Bin, searchInfo)
+        do
+            searchResult = ppiclf_solve_FindNearestNeighborSB(searchInfo)
+            if (.not. searchResult%exists) exit ! exit when the nearest neighbor search doesn't find another neighbor
+            if (searchResult%j .eq. 0) cycle ! skip boundary
+            ! if the search did find a neigbor save the resulting info for the unit tests to retrieve later
+            PARTICLE_NN(i) = PARTICLE_NN(i) + 1
+            ! PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + dist_total
+            PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + nvecMagnitudeSQ((ppiclf_parts(i)%y%pos - searchResult%neighbor%y%pos))
+        end do
     END DO
     RETURN
 #endif

@@ -46,16 +46,6 @@ subroutine GENERIC_TYPE_A_extention(ppiclf_alltoallv)(sendbuf, sendcounts, sendd
         call mpi_ialltoall(sendcounts, 1, MPI_INTEGER4, recvcounts, 1, MPI_INTEGER4, MPI_COMM_WORLD, ialltoall_request, ierr)
     end if ! recvcounts(0) < 0
 
-    ! initiate the sending of data
-    n_sends = 0
-    do i = 0, ppiclf_np - 1
-        ! don't send if we dont need to
-        if (sendcounts(i) .eq. 0) cycle
-
-        call MPI_ISEND(sendbuf(senddispls(i) + 1), sendcounts(i), type_handle, i, PPICLF_MPI_tags%ppiclf_alltoallv_transfer, comm, send_request_handles(n_sends), ierr)
-        n_sends = n_sends + 1
-    end do ! data send
-
     ! recieve the transfer of the send counts from other ranks
     if (syncing_counts) then
         ! if (rank .eq. 0) then
@@ -86,6 +76,17 @@ subroutine GENERIC_TYPE_A_extention(ppiclf_alltoallv)(sendbuf, sendcounts, sendd
         call MPI_IRECV(recvbuf(recvdispls(i) + 1), recvcounts(i), type_handle, i, PPICLF_MPI_tags%ppiclf_alltoallv_transfer, comm, recv_request_handles(n_recvs), ierr)
         n_recvs = n_recvs + 1
     end do ! data send
+
+    ! initiate the sending of data
+    n_sends = 0
+    do i = 0, ppiclf_np - 1
+        ! don't send if we dont need to
+        if (sendcounts(i) .eq. 0) cycle
+
+        call MPI_ISEND(sendbuf(senddispls(i) + 1), sendcounts(i), type_handle, i, PPICLF_MPI_tags%ppiclf_alltoallv_transfer, comm, send_request_handles(n_sends), ierr)
+        n_sends = n_sends + 1
+    end do ! data send
+
     call MPI_WAITALL(n_sends, send_request_handles, stats, ierr)
     call MPI_WAITALL(n_recvs, recv_request_handles, stats, ierr)
 end subroutine GENERIC_TYPE_A_extention(ppiclf_alltoallv)

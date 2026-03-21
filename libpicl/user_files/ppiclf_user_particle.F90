@@ -165,6 +165,9 @@ module PPICLF_user_particle
         module procedure solDIVScalar
         module procedure interpDIVScalar
     end interface
+    interface operator(.eq.)
+        module procedure partEQpart
+    end interface
 
     ! Handles to the MPI derived types
     ! The elements are the handles for the following types, in order:
@@ -413,6 +416,34 @@ module PPICLF_user_particle
         resFDBK%TSG2    = f1%TSG2   * s
         resFDBK%TSG3    = f1%TSG3   * s
     end function feedbackMULTscalar
+
+    pure module function partEQpart(p1, p2) result(res)
+        type(PPICLF_U_t_particle), intent(in) :: p1, p2
+        logical res
+        res = .true.
+
+        if(any(p1%y%pos%vec .ne. p2%y%pos%vec)) res = .false.
+        if(any(p1%y%vel%vec .ne. p2%y%vel%vec)) res = .false.
+        if(p1%y%oxide .ne. p2%y%oxide ) res = .false.
+        if(p1%tag%partNum .ne. p2%tag%partNum ) res = .false.
+        if(p1%tag%rankNum .ne. p2%tag%rankNum ) res = .false.
+        if(p1%tag%cycleNum .ne. p2%tag%cycleNum ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+        ! if(p1% .ne. p2% ) res = .false.
+    end function partEQpart
     ! checks for any nan values in an interp object
     pure function interpHasNAN(interp)  result(b)
         type(PPICLF_U_t_interp), intent(in) :: interp

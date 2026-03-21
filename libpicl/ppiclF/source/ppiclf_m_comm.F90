@@ -151,8 +151,8 @@ module ppiclf_m_comm
         !
         ppiclf_overlap = .TRUE.
 
-      IF(.NOT. PPICLF_LCOMM) CALL ppiclf_exittr('InitMPI must be before InitOverlap$',0.0d0,0)
-      IF(.NOT. PPICLF_LINIT) CALL ppiclf_exittr('InitParticle must be before InitOverlap$',0.0d0,0)
+        IF(.NOT. PPICLF_LCOMM) CALL ppiclf_exittr('InitMPI must be before InitOverlap$',0.0d0,0)
+        IF(.NOT. PPICLF_LINIT) CALL ppiclf_exittr('InitParticle must be before InitOverlap$',0.0d0,0)
 
         IF(ncell .GT. PPICLF_LEE .OR. ncell .LT. 0) THEN
             PRINT*, '***ERROR*** PPICLF_LEE', PPICLF_LEE, 'in', 'InitMapOverlapGrid must be greater than', ncell
@@ -629,7 +629,7 @@ module ppiclf_m_comm
         recvcounts = -1 ! since we don't know how much data we are going to be receiving, set recvcounts to -1 so that ppiclf_alltoallv will determine it for us.
         do i = 1, ppiclf_npart
             if (sendcounts(tempParticles(i)%iprop%ParticleRank) .eq. 0) then
-                senddisp(tempParticles(i)%iprop%ParticleRank) = i
+                senddisp(tempParticles(i)%iprop%ParticleRank) = i -1
             end if
             sendcounts(tempParticles(i)%iprop%ParticleRank) = sendcounts(tempParticles(i)%iprop%ParticleRank) + 1
         end do
@@ -807,9 +807,9 @@ module ppiclf_m_comm
         DO ie=1,ppiclf_nCells_FV2PICL_Sent 
             ! These copy all indicies since Fortran is column-major
             iee = ppiclf_cell_map(1,ie)
-            ppiclf_picl_grid_tosend(i)%homeCellIndex = iee
-            ppiclf_picl_grid_tosend(i)%homeRank = ppiclf_nid
-            ppiclf_picl_grid_tosend(i)%FluidCell = ppiclf_fluid_grid(:, iee)
+            ppiclf_picl_grid_tosend(ie)%homeCellIndex = iee
+            ppiclf_picl_grid_tosend(ie)%homeRank = ppiclf_nid
+            ppiclf_picl_grid_tosend(ie)%FluidCell = ppiclf_fluid_grid(:, iee)
 
             ! ppiclf_filter initially set in PICL_TEMP_InitSolver
             ! Want to only consider cells that reside in the particle domain
@@ -836,6 +836,7 @@ module ppiclf_m_comm
 #ifdef PERF
         tstart = MPI_WTIME()
 #endif
+        ppiclf_cell_map_recvcounts = -1
         call ppiclf_alltoallv(ppiclf_picl_grid_tosend, ppiclf_cell_map_sendcounts, ppiclf_cell_map_senddisps, ppiclf_picl_grid, ppiclf_cell_map_recvcounts, ppiclf_cell_map_recvdisps, ppiclf_t_fluidCell_wrapped_MPIH, ppiclf_comm, PPICLF_LEE)
         
         PPICLF_NCELLS_FV2PICL = sum(ppiclf_cell_map_recvcounts)
@@ -999,6 +1000,11 @@ module ppiclf_m_comm
                         ! !ghostsMade = ghostsMade + 1
                         ppiclf_npart_gp = ppiclf_npart_gp + 1
                         call CopyRealToGhost(ppiclf_parts(ip), ppiclf_gparts(ppiclf_npart_gp))
+
+                        ! GhostPos isn't just a copy of the position vector at this point,
+                        ! it is modified by the calls to ppiclf_comm_LinearPeriodicityGhost,
+                        ! so we have to save it back to the new ghost particle
+                        ppiclf_gparts(ppiclf_npart_gp)%y%pos%vec = GhostPos 
                         
                         ppiclf_gparts(ppiclf_npart_gp)%iprop%ParticleRank = nrank
                         ppiclf_gparts(ppiclf_npart_gp)%iprop%xBin = iig
@@ -1066,7 +1072,6 @@ module ppiclf_m_comm
         REAL*8    tstart, tfinal
 #endif
         type(PPICLF_U_t_ghostParticle), allocatable :: tempGhosts(:)
-
         allocate(tempGhosts(ppiclf_npart_gp))
         call ppiclf_ghostParticles_GroupByIntoArray(ppiclf_gparts, tempGhosts, [GroupByKeys%RankNum], ierr)
 
@@ -1075,7 +1080,7 @@ module ppiclf_m_comm
         senddisp = 0
         do i = 1, ppiclf_npart_gp
             if (sendcounts(tempGhosts(i)%iprop%ParticleRank) .eq. 0) then
-                senddisp(tempGhosts(i)%iprop%ParticleRank) = i
+                senddisp(tempGhosts(i)%iprop%ParticleRank) = i - 1
             end if
             sendcounts(tempGhosts(i)%iprop%ParticleRank) = sendcounts(tempGhosts(i)%iprop%ParticleRank) + 1
         end do

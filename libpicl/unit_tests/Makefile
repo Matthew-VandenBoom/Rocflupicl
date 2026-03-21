@@ -1,81 +1,48 @@
-FC               = mpif77
-FFLAGS          += -cpp           \
- 		   -z muldefs     \
- 	           -Wall          \
-             	   -fbacktrace    \
-                   -fallow-argument-mismatch  
+FC               = mpifort
 CC               = mpicc  
 CPFLAGS         += -E
 
+PPICLF_IFLAGS+=-I$(SOURCE_ROOT_PPICLF)/include -I$(SOURCE_ROOT_USER) -I$(SOURCE_ROOT_USER)/include 
+PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5 -O3 -g
+PPICLF_FFLAGS+=-I$(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
+
 # PPICLF LIBRARY
-SOURCE_ROOT_PPICLF= ../ppiclF/source
-USR_LFLAGS+=-L $(SOURCE_ROOT_PPICLF) -lppiclF
-PRE = unitTestSrc/UNIT_TEST_COMMON.h             \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_SOLN.h        \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_GRID.h        \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_OPT.h         \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_PARALLEL.h    \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_USER_COMMON.h \
-      $(SOURCE_ROOT_PPICLF)/PPICLF_GEOM.h
-POS = unitTestSrc/PPICLF_UNIT_TEST
+LIBPPICL_ROOT=../
+SOURCE_ROOT_PPICLF= $(LIBPPICL_ROOT)/ppiclF/source
+BUILD_ROOT_PPICLF=$(LIBPPICL_ROOT)/ppiclF/build
+SOURCE_ROOT_USER=$(LIBPPICL_ROOT)/user_files
+BUILD_ROOT_USER=$(BUILD_ROOT_PPICLF)/user
+LFLAGS+=-L$(BUILD_ROOT_PPICLF) -lppiclF
+
       
+MODULE_SRC=	unitTestSrc/UT_m_data.F90 \
+			unitTestSrc/UT_m_setup.F90 \
 
-SRC1 = unitTestSrc/UT_setup.f 
-SRC2 = unitTestSrc/UT_CreateBin.f
-SRC3 = unitTestSrc/UT_InterpProj.f
-SRC4 = unitTestSrc/UT_P2PNN.f
-SRC5 = unitTestSrc/UT_CodePerformance.f
+MODULE_OBJ= $(patsubst unitTestSrc/%.F90,%.o,$(MODULE_SRC))
 
-OBJ1 = unitTestSrc/UT_setup.o 
-OBJ2 = unitTestSrc/UT_CreateBin.o
-OBJ3 = unitTestSrc/UT_InterpProj.o
-OBJ4 = unitTestSrc/UT_P2PNN.o
-OBJ5 = unitTestSrc/UT_CodePerformance.o
+EXE_SRC = 	unitTestSrc/UT_CreateBin.F90 \
+			unitTestSrc/UT_InterpProj.F90 \
+			unitTestSrc/UT_P2PNN.F90 \
 
-ENAME1 = CreateBin_UnitTest
-ENAME2 = InterpProj_UnitTest
-ENAME3 = Particle2Particle_UnitTest
-ENAME4 = CodePerformance_UnitTest
+UNUSED=			unitTestSrc/UT_CodePerformance.F90 \
+
+EXE=$(patsubst %.F90,%_UnitTest,$(patsubst unitTestSrc/UT_%,%,$(EXE_SRC)))
 
 # Make commands
-default: preProcess getObjs linkObjs
+default: $(EXE)
 
-linkObjs:  $(OBJ1)
-	$(FC) $(FFLAGS) -o $(ENAME1) $(OBJ1) $(OBJ2) $(USR_LFLAGS)
-	$(FC) $(FFLAGS) -o $(ENAME2) $(OBJ1) $(OBJ3) $(USR_LFLAGS)
-	$(FC) $(FFLAGS) -o $(ENAME3) $(OBJ1) $(OBJ4) $(USR_LFLAGS)
-	$(FC) $(FFLAGS) -o $(ENAME4) $(OBJ1) $(OBJ5) $(USR_LFLAGS)
-	@echo "                         "
-	@echo "*************************"
-	@echo "*** USER LINK SUCCESS ***"
-	@echo "*************************"
-	@echo "                         "
+%_UnitTest: unitTestSrc/UT_%.F90 $(MODULE_OBJ)
+	@echo Building $@ from $<
+	@$(FC) $< -o $@ $(PPICLF_FFLAGS) $(MODULE_OBJ) $(LFLAGS)
 
-getObjs: $(SRC1) $(SRC2) $(SRC3) $(SRC4) $(SRC5)
-	$(FC) $(FFLAGS) -c $(SRC1) 
-	$(FC) $(FFLAGS) -c $(SRC2) 
-	$(FC) $(FFLAGS) -c $(SRC3) 
-	$(FC) $(FFLAGS) -c $(SRC4) 
-	$(FC) $(FFLAGS) -c $(SRC5)
-	@echo "                           "
-	@echo "***************************"
-	@echo "*** USER OBJECT SUCCESS ***"
-	@echo "***************************"
-	@echo "                           "
-	@mv *.o unitTestSrc/
-
-preProcess: $(PRE)
-	$(CC) $(CPFLAGS) $(PRE) > $(POS)_tmp
-	grep "^[^#]" $(POS)_tmp > $(POS)
-	rm $(POS)_tmp
-	@echo "                       "
-	@echo "********************"
-	@echo "*** PREPROCESSED ***"
-	@echo "********************"
-	@echo "                       "
+%.o: unitTestSrc/%.F90
+	@echo Building module $@ from $<
+	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
 
 # Cleaning stuff
 clean:
-	@rm $(OBJ1) $(OBJ2) $(OBJ3) $(OBJ4) $(OBJ5)
-	@rm $(ENAME1) $(ENAME2) $(ENAME3) $(ENAME4)
-	@rm $(POS)
+	@rm -f $(MODULE_OBJ) $(EXE)
+	@rm -f *.mod
+	@rm -f *.smod
+
+.SECONDARY: $(MODULE_OBJ)

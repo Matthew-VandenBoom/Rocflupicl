@@ -1,51 +1,39 @@
-#include "../../ppiclF/source/PPICLF_USER.h"
-#include "../../ppiclF/source/PPICLF_STD.h"
-! General variables
-      INTEGER*4 rootProc, nid, nproc, ierr, icomm, test
-
-      COMMON /Gen_Int/ 
-     >          rootProc, nid, nproc, ierr, icomm, test
-
-      REAL*8    PI, randNum
-
-      COMMON /Gen_Real/ 
-     >          PI
-
-! Grid variables
-      INTEGER*4 nCells(3), proc_ncells, numCells,
-     >          iCend, iCstart, cellsPerProc
-
-      COMMON /Grid_INT/ 
-     >          nCells, proc_ncells, numCells,
-     >          iCend, iCstart, cellsPerProc
-
-      REAL*8    p_grid(7,PPICLF_LEE), grid(7,PPICLF_LEE),
-     >          gridDomain(2,3), gridDX(3), filter(3), 
-     >          nFilterCells, dx_min(3) 
-
-      COMMON /Grid_Real/ 
-     >          p_grid, grid,
-     >          gridDomain, gridDX, filter, 
-     >          nFilterCells, dx_min
-
-      LOGICAL   gridBoundsDefined
-      COMMON /Grid_Log/ gridBoundsDefined
+#include "PPICLF_STD.h"
+module UT_m_data
+    use ppiclf_user_particle
+    ! General variables
+    
+    ! COMMON /Gen_Int/ 
+    INTEGER*4 rootProc, nid, nproc, ierr, icomm, test
 
 
-! Particle variables
-      REAL*8    part_y(PPICLF_LRS,PPICLF_LPART), pdia, 
-     >          p_part_y(PPICLF_LRS,PPICLF_LPART), part_dx(3),
-     >          p_part_r(PPICLF_LRP,PPICLF_LPART), nndist
+    ! COMMON /Gen_Real/ 
+    REAL*8, parameter ::    PI       = 4.0D0*ATAN(1.0) ! pi
+    
+    real*8 randNum
 
-      COMMON /Part_Real/ 
-     >          part_y, pdia, 
-     >          p_part_y, part_dx,
-     >          p_part_r, nndist
 
-      INTEGER*4 particlesPerProc, npart_local,
-     >          totalParticles, iPend, iPstart
+    ! Grid variables
+    ! COMMON /Grid_INT/ 
+    INTEGER*4 nCells(3), proc_ncells, numCells, iCend, iCstart, cellsPerProc
 
-      COMMON /Part_Int/ 
-     >          particlesPerProc, npart_local,
-     >          totalParticles, iPend, iPstart
 
+    !COMMON /Grid_Real/ 
+    REAL*8    p_grid(7,PPICLF_LEE), grid(7,PPICLF_LEE),gridDomain(2,3), gridDX(3), filter(3),nFilterCells, dx_min(3) 
+
+    ! COMMON /Grid_Log/
+    LOGICAL   gridBoundsDefined
+
+
+    ! Particle variables
+    ! COMMON /Part_Real/ 
+    REAL*8 pdia, part_dx(3), nndist
+    ! part_y(PPICLF_LRS,PPICLF_LPART), p_part_y(PPICLF_LRS,PPICLF_LPART), p_part_r(PPICLF_LRP,PPICLF_LPART),
+    type(PPICLF_U_t_particle), dimension(PPICLF_LPART):: parts, p_parts
+
+
+    !COMMON /Part_Int/ 
+    INTEGER*4 particlesPerProc, npart_local, totalParticles, iPend, iPstart
+
+    save
+end module UT_m_data

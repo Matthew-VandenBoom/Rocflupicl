@@ -2,7 +2,7 @@
 
 module ppiclf_m_particle_ops
 
-    use ppiclf_data, only: ppiclf_totalBins, ppiclf_npart, ppiclf_np
+    use ppiclf_data, only: ppiclf_totalBins, ppiclf_npart, ppiclf_np, ppiclf_npart_gp
 
     use ppiclf_user_particle, only: PPICLF_U_t_particle, PPICLF_U_t_ghostParticle
     implicit none
@@ -132,9 +132,9 @@ module ppiclf_m_particle_ops
         ! (:,1) counts the number of particles in the rank
         ! (:,2) start index in the sorted array
         ! (:,3) counter when sorting
-        integer :: rankInfo(0:ppiclf_np, 3)
+        integer :: rankInfo(0:ppiclf_np-1, 3)
         
-        integer :: i, partBin
+        integer :: i, partRank
 
         rankInfo = 0
         
@@ -142,16 +142,16 @@ module ppiclf_m_particle_ops
             rankInfo(inParticles(i)%iprop%ParticleRank, 1) = rankInfo(inParticles(i)%iprop%ParticleRank, 1) + 1
         end do
 
-        do i = 1, ppiclf_totalBins
+        do i = 1, ppiclf_np - 1
             ! this start index = prev start index + n prev
             rankInfo(i,2)  = rankInfo(i-1, 2) + rankInfo(i-1, 1)
         end do
 
         rankInfo(:, 3) = rankInfo(:, 2) + 1
         do i = 1, ppiclf_npart
-            partBin = inParticles(i)%iprop%ParticleRank
-            outParticles(rankInfo(partBin, 3)) = inParticles(i)
-            rankInfo(partBin, 3) = rankInfo(partBin, 3) + 1
+            partRank = inParticles(i)%iprop%ParticleRank
+            outParticles(rankInfo(partRank, 3)) = inParticles(i)
+            rankInfo(partRank, 3) = rankInfo(partRank, 3) + 1
         end do
 
     end subroutine ppiclf_particles_GroupBy_Rank
@@ -198,16 +198,16 @@ module ppiclf_m_particle_ops
         !
         integer i
         type(PPICLF_U_t_ghostParticle), allocatable :: tempParticles(:)
-        allocate(tempParticles(ppiclf_npart))
+        allocate(tempParticles(ppiclf_npart_gp))
 
-        if (size(outParticles) < ppiclf_npart) then
+        if (size(outParticles) < ppiclf_npart_gp) then
             ierr = 2
             return
         end if
-        tempParticles(1:ppiclf_npart)  = inParticles(1:ppiclf_npart)
+        tempParticles(1:ppiclf_npart_gp)  = inParticles(1:ppiclf_npart_gp)
         do i = 1, size(keys)
             if (i .ne. 1) then
-                tempParticles(1:ppiclf_npart)  = outParticles(1:ppiclf_npart)
+                tempParticles(1:ppiclf_npart_gp)  = outParticles(1:ppiclf_npart_gp)
             end if
             select case (keys(i))
             case (GroupByKeys%BinNum)
@@ -240,7 +240,7 @@ module ppiclf_m_particle_ops
 
         binInfo = 0
         
-        do i = 1, ppiclf_npart
+        do i = 1, ppiclf_npart_gp
             binInfo(inParticles(i)%iprop%binNum, 1) = binInfo(inParticles(i)%iprop%binNum, 1) + 1
         end do
 
@@ -250,7 +250,7 @@ module ppiclf_m_particle_ops
         end do
 
         binInfo(:, 3) = binInfo(:, 2) + 1
-        do i = 1, ppiclf_npart
+        do i = 1, ppiclf_npart_gp
             partBin = inParticles(i)%iprop%binNum
             outParticles(binInfo(partBin, 3)) = inParticles(i)
             binInfo(partBin, 3) = binInfo(partBin, 3) + 1
@@ -268,26 +268,26 @@ module ppiclf_m_particle_ops
         ! (:,1) counts the number of particles in the rank
         ! (:,2) start index in the sorted array
         ! (:,3) counter when sorting
-        integer :: rankInfo(0:ppiclf_np, 3)
+        integer :: rankInfo(0:ppiclf_np-1, 3)
         
-        integer :: i, partBin
+        integer :: i, partRank
 
         rankInfo = 0
         
-        do i = 1, ppiclf_npart
+        do i = 1, ppiclf_npart_gp
             rankInfo(inParticles(i)%iprop%ParticleRank, 1) = rankInfo(inParticles(i)%iprop%ParticleRank, 1) + 1
         end do
 
-        do i = 1, ppiclf_totalBins
+        do i = 1, ppiclf_np - 1
             ! this start index = prev start index + n prev
             rankInfo(i,2)  = rankInfo(i-1, 2) + rankInfo(i-1, 1)
         end do
 
         rankInfo(:, 3) = rankInfo(:, 2) + 1
-        do i = 1, ppiclf_npart
-            partBin = inParticles(i)%iprop%ParticleRank
-            outParticles(rankInfo(partBin, 3)) = inParticles(i)
-            rankInfo(partBin, 3) = rankInfo(partBin, 3) + 1
+        do i = 1, ppiclf_npart_gp
+            partRank = inParticles(i)%iprop%ParticleRank
+            outParticles(rankInfo(partRank, 3)) = inParticles(i)
+            rankInfo(partRank, 3) = rankInfo(partRank, 3) + 1
         end do
 
     end subroutine ppiclf_ghostParticles_GroupBy_Rank

@@ -3,11 +3,11 @@ CC               = mpicc  # Valid MPI C compiler
 FFLAGS          += -cpp -w -O3 -std=legacy -g -fmax-errors=1#-fallow-argument-mismatch -fcheck=all
 CPFLAGS         += -E
 ifeq ($(TEST),1)
-    FFLAGS += -DTEST
+    PPICLF_FFLAGS += -DTEST -g -fcheck=bounds
 endif
 
 ifeq ($(PERF),1)
-    FFLAGS += -DPERF
+    PPICLF_FFLAGS += -DPERF
 endif
 
 PREPROCDEFINES+=-DNDIM=3
@@ -24,7 +24,7 @@ SOURCE_ROOT_USER=$(INSTALL_LOCATION)/user_files
 BUILD_ROOT_PPICLF=$(INSTALL_LOCATION)/ppiclF/build
 BUILD_ROOT_USER=$(BUILD_ROOT_PPICLF)/user
 PPICLF_IFLAGS+=-I$(SOURCE_ROOT_PPICLF)/include -I$(SOURCE_ROOT_USER) -I$(SOURCE_ROOT_USER)/include 
-PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5 -O3 -g
+PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5
 PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -J$(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
 PPICLF_FFLAGS+=-J$(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
 
@@ -145,6 +145,8 @@ $(BUILD_ROOT_PPICLF)/ppiclf_data.o: $(BUILD_ROOT_PPICLF)/ppiclf_m_wrapped_types.
 $(BUILD_ROOT_PPICLF)/ppiclf_m_wrapped_types.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
 
 $(BUILD_ROOT_PPICLF)/ppiclf_user.o: $(BUILD_ROOT_USER)/ppiclf_user_particle.o
+
+$(BUILD_ROOT_PPICLF)/ppiclf_m_transfers.o: $(SOURCE_ROOT_PPICLF)/include/Generic_Procedures/ppiclf_alltoallv.subroutine.F90
 
 # user file dependencies 
 $(BUILD_ROOT_USER)/ppiclf_user_SetYdot.o: $(BUILD_ROOT_USER)/ppiclf_m_user_ForceModels.o

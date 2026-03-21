@@ -627,12 +627,12 @@ submodule (ppiclf_op) ppiclf_op_imp
         ! Internal:
         !
         ! integer*4, intent(in)    :: nMappedCells, nranks
-        ! INTEGER*4, intent(inout) :: cell_map(PPICLF_LRMAX,PPICLF_LEE), cell_map_counts(0:ppiclf_np), cell_map_disps(0:ppiclf_np)
+        ! INTEGER*4, intent(inout) :: cell_map(PPICLF_LRMAX,PPICLF_LEE), cell_map_counts(0:ppiclf_np-1), cell_map_disps(0:ppiclf_np-1)
         !
         ! Internal:
         !
         integer*4 :: temp_cell_map(PPICLF_LRMAX, PPICLF_LEE)
-        integer*4 :: rankInfo(0:ppiclf_np)
+        integer*4 :: rankInfo(0:ppiclf_np - 1)
         integer*4 i, cellRank
 
         cell_map_counts = 0
@@ -642,7 +642,7 @@ submodule (ppiclf_op) ppiclf_op_imp
         end do
 
         cell_map_disps(0) = 0
-        do i = 1, ppiclf_np
+        do i = 1, ppiclf_np - 1
             ! this start index = prev start index + n prev
             cell_map_disps(i)  = cell_map_disps(i-1) + cell_map_counts(i-1)
         end do

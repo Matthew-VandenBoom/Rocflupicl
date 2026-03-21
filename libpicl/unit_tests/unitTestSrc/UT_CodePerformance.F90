@@ -1,13 +1,20 @@
-#include "../../ppiclF/source/PPICLF_USER.h"
-#include "../../ppiclF/source/PPICLF_STD.h"
-!----------------------------------------------------------------------
-      PROGRAM main
+#include "PPICLF_STD.h"
 
-      IMPLICIT NONE
+PROGRAM main
+    use mpi
+    use UT_m_data
+    use UT_m_setup
+    use ppiclf_data, only: x_per_flag, x_per_min, x_per_max, y_per_flag, y_per_min, y_per_max, z_per_flag, z_per_min, z_per_max , ang_per_flag, ang_per_angle, ang_per_xangle, ang_per_rin, ang_per_rout
+    use ppiclf_data, only: ppiclf_np, ppiclf_nndist, ppiclf_overlap, ppiclf_filter, ppiclf_n_bins, ppiclf_npart, ppiclf_binb, ppiclf_linperiodic
+    use ppiclf_m_particledata, only: ppiclf_parts
+    use ppiclf_data, only: ppiclf_equaldomain, PPICLF_TOTNNDIST, particle_nn
 
-      INCLUDE 'mpif.h'
-      INCLUDE 'PPICLF_UNIT_TEST'
-      INTEGER*4 i, j, k, l, m, ie
+    use ppiclf_solve, only: ppiclf_solve_Initialize, ppiclf_solve_InitParticle, ppiclf_solve_Interpolate, ppiclf_solve_InterpFieldUser, ppiclf_solve_GetProFld, ppiclf_solve_InitSolve
+    use ppiclf_m_comm, only: ppiclf_comm_CreateBin, ppiclf_comm_InitMPI, ppiclf_comm_InitOverlapGrid, ppiclf_comm_FindParticle, ppiclf_comm_CreateGhost,ppiclf_comm_MoveGhost, ppiclf_comm_MoveParticle
+    use ppiclf_user, only: ppiclf_user_SetYdotInit
+    
+    IMPLICIT NONE
+    INTEGER*4 i, j, k, l, m, ie
 
       ! Timer variables
       REAL*8    Tstart, Tend, SBtime, Regtime

@@ -1,7 +1,8 @@
 #include <PPICLF_STD.h>
 
 module ppiclf_m_types
-
+    use mpi
+    implicit none
     
     type PPICLF_t_tag
         integer*4 :: partNum
@@ -59,6 +60,10 @@ module ppiclf_m_types
     end interface
     interface operator(/)
         module procedure nvecDIVScalar
+    end interface
+
+    interface operator(.eq.)
+        module procedure tagEQtag
     end interface
 
     contains
@@ -156,6 +161,14 @@ module ppiclf_m_types
         compSum = sum(v%vec)
     end function nvecComponentSum
 
+    pure function tagEQtag(t1, t2) result(equals)
+        type(PPICLF_t_tag), intent(in) :: t1, t2
+        logical equals
+        equals = t1%partNum .eq. t2%partNum .and. &
+                 t1%rankNum .eq. t2%rankNum .and. &
+                 t1%cycleNum .eq. t2%cycleNum
+    end function tagEQtag
+    
     subroutine ppiclf_m_types_Create_MPI_Derivedtypes()
         integer ierr
         ! create and commit mpi derived type for PPICLF_t_realNVec

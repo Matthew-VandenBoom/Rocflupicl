@@ -33,7 +33,7 @@ module ppiclf_m_user_SubbinMap
     use ppiclf_data, only:
 
 
-    use ppiclf_m_user_data
+    ! use ppiclf_m_user_data
 
     use ppiclf_op, only: ppiclf_exittr
 
@@ -41,7 +41,7 @@ module ppiclf_m_user_SubbinMap
 
     implicit none
     contains
-    SUBROUTINE ppiclf_user_subbinMap(i_Bin, n_SBin, tot_SBin,SBin_counter, SBin_map)
+    SUBROUTINE ppiclf_user_subbinMap(i_Bin_local, n_SBin, tot_SBin,SBin_counter, SBin_map)
         !
         ! Input:
         !
@@ -58,7 +58,7 @@ module ppiclf_m_user_SubbinMap
             - 1)                                                                &
             )
 
-        INTEGER*4  i_Bin(3), n_SBin(3), tot_SBin
+        INTEGER*4  i_Bin_local(3), n_SBin(3), tot_SBin
         !
         ! Internal:
         !
@@ -72,10 +72,11 @@ module ppiclf_m_user_SubbinMap
         ! All real particles are in the same bin.  Look at 1st r particle
         i = 1
         DO l = 1,3
-            i_Bin(l) = FLOOR((ppiclf_parts(i)%y%pos%vec(l) - ppiclf_binb(2*l-1)) /ppiclf_bins_dx(l))
-            bin_xMin(l) = ppiclf_binb(2*l-1)+i_Bin(l)*ppiclf_bins_dx(l) 
+            i_Bin_local(l) = FLOOR((ppiclf_parts(i)%y%pos%vec(l) - ppiclf_binb(2*l-1)) /ppiclf_bins_dx(l))
+            bin_xMin(l) = ppiclf_binb(2*l-1)+i_Bin_local(l)*ppiclf_bins_dx(l) 
         END DO 
         ! Determine the number of subbins in each dimension
+        ! print*, ppiclf_nid, "subbin map 2", bin_xMin
         DO l = 1,3
             IF (l .LT. 3 .OR. ppiclf_ndim .GT. 2) THEN
                 n_SBin(l) = FLOOR((ppiclf_bins_dx(l)+2*ppiclf_nndist) /ppiclf_nndist) + 1
@@ -109,9 +110,9 @@ module ppiclf_m_user_SubbinMap
                     i_SBin(l) = 0
                 END IF
             END DO
-           temp_SBin = i_SBin(1) + n_SBin(1)*i_SBin(2) + n_SBin(1)*n_SBin(2)*i_SBin(3)
-           SBin_counter(temp_SBin) = SBin_counter(temp_SBin) + 1
-           SBin_map(temp_SBin,SBin_counter(temp_SBin)) = i
+            temp_SBin = i_SBin(1) + n_SBin(1)*i_SBin(2) + n_SBin(1)*n_SBin(2)*i_SBin(3)
+            SBin_counter(temp_SBin) = SBin_counter(temp_SBin) + 1
+            SBin_map(temp_SBin,SBin_counter(temp_SBin)) = i
         END DO ! real particle loop
 
 

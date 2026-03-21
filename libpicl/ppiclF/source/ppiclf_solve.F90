@@ -178,7 +178,7 @@ module ppiclf_solve
     END SUBROUTINE ppiclf_solve_Initialize
 
     ! had PPICLC
-    SUBROUTINE ppiclf_solve_InitParticle(imethod,ndim,iendian,particles,filt2,filt3)
+    SUBROUTINE ppiclf_solve_InitParticle(imethod,ndim,iendian,nparts,particles,filt2,filt3)
         !
         ! Called from rocpicl/PICL_TEMP_InitSolver.F90
         !
@@ -187,6 +187,7 @@ module ppiclf_solve
         INTEGER*4  imethod ! From rocpicl: 2 (Same RK3 as Rocflu)
         INTEGER*4  ndim    ! From rocpicl: 3
         INTEGER*4  iendian ! From rocpicl: 0
+        INTEGER*4  nparts
         type(PPICLF_U_t_particle), intent(in) :: particles(:)
         REAL*8     filt2(3)
         REAL*8     filt3
@@ -212,7 +213,7 @@ module ppiclf_solve
             CALL ppiclf_solve_InitZero
             CALL ppiclf_prints('   *End InitZero$')
             CALL ppiclf_prints('   *Begin AddParticles$')
-            CALL ppiclf_solve_AddParticles(particles)
+            CALL ppiclf_solve_AddParticles(nparts, particles)
             CALL ppiclf_prints('   *End AddParticles$')
         END IF
 
@@ -311,37 +312,37 @@ module ppiclf_solve
     END SUBROUTINE ppiclf_solve_InitParam
 
     ! had PPICLC
-    SUBROUTINE ppiclf_solve_AddParticles(particles)
+    SUBROUTINE ppiclf_solve_AddParticles(npart, particles)
         !
         ! Input: 
         !
+        integer*4, intent(in) :: npart
         type(PPICLF_U_t_particle), intent(in) :: particles(:)
         !
         ! Internal:
         !
-        INTEGER*4  npart
         INTEGER*4 ntotal,i,j
         !
         CALL ppiclf_prints('   *Begin AddParticles$')
-        npart = size(particles)
         
         IF(ppiclf_npart+npart .gt. PPICLF_LPART .or. npart .lt. 0) CALL ppiclf_exittr('Invalid number of particles$',0.0D0,ppiclf_npart+npart)
 
         CALL ppiclf_printsi('      -Begin copy particles$',npart)
 
-        ppiclf_parts(ppiclf_npart + 1 : ppiclf_npart + 1 + npart) = particles(:)
+        ppiclf_parts(ppiclf_npart + 1 : ppiclf_npart + npart) = particles(1:npart)
         
 
         ppiclf_npart = ppiclf_npart + npart
 
         CALL ppiclf_printsi('      -Begin copy particles$',ppiclf_npart)
-
+! dont set the particles tags for tests, allow the test init to setup its own tags so particles can be tracked before and after libpicl is done
+#ifndef TEST  
         IF(.NOT. PPICLF_RESTART) THEN
             CALL ppiclf_prints('      -Begin ParticleTag$')
             CALL ppiclf_solve_SetParticleTag(npart)
             CALL ppiclf_prints('       End ParticleTag$')
         END IF
-
+#endif 
         CALL ppiclf_prints('    End AddParticles$')
 
     END SUBROUTINE ppiclf_solve_AddParticles
@@ -373,9 +374,9 @@ module ppiclf_solve
         integer*4 SBt ! total # of subbins
         integer*4 SBn(3) ! number of subbins in each direction 
         integer*4 iB(3) ! this ranks bin number in each dimension  
-        INTEGER*4, target :: SBc(:) ! number of particles in each subbin
-        integer*4, target :: SBm(:,:) ! map of particles to subbins
-        type(PPICLF_t_NNSB_Search_Data), intent(inout) :: searchInfo
+        INTEGER*4, target :: SBc(0:) ! number of particles in each subbin
+        integer*4, target :: SBm(0:,:) ! map of particles to subbins
+        type(PPICLF_t_NNSB_Search_Data), intent(out) :: searchInfo
 
         !
         ! Internal:
@@ -406,6 +407,7 @@ module ppiclf_solve
         searchInfo%kSB = 1
         searchInfo%k   = 1
         searchInfo%doneParticles = .false.
+        searchInfo%done = .false.
     end subroutine ppiclf_solve_FindNearestNeighborSB_Start
 
     function ppiclf_solve_FindNearestNeighborSB(searchInfo) result(neighbor)
@@ -463,6 +465,7 @@ module ppiclf_solve
                         neighbor%j = -1 * j
                         neighbor%neighbor = ppiclf_gparts(j)
                         searchInfo%k = searchInfo%k + 1
+                        return
                     END IF
                 end do  ! particles in loopSB
             end if ! loopSB valid
@@ -603,201 +606,206 @@ module ppiclf_solve
             !     ! ,ppiclf_cp_map(1+PPICLF_LRS,i)            &
             !     ! ,ydum                                     &
             !     ! ,rpropdum)
+            neighbor%exists = .true.
+            neighbor%j = 0
+            searchInfo%k = searchInfo%k + 1
+            return
 
             1519 continue
         ENDdo
+        neighbor%exists = .false.
     end function ppiclf_solve_FindNearestNeighborSB
 
-    SUBROUTINE ppiclf_solve_NearestNeighborSB_OLD(i,SBt,SBc,SBm,SBn,iB)
-        ! 
-        ! Input:
-        !
-        INTEGER*4 i, SBt, SBn(3), iB(3)  
-        INTEGER*4 SBc(0:(SBt-1)), SBm(0:(SBt-1),(ppiclf_npart+ppiclf_npart_gp))
-        ! declare a temporary ghost particle variable. when we want to do the interaction between 2 real particles
-        ! this ghost will be filled with the data from the 2nd real. this allows user_nearest_neighboor to always assume it has been
-        ! given 1 real and 1 ghost.
-        ! 
-        ! Internal: 
-        ! 
-        type(PPICLF_U_t_ghostParticle) tempGhost
-        REAL*8 xp(3), bin_xMin(3),      &
-            A(3),B(3),C(3),AB(3),AC(3), distSQ,            &
-            dist_total, rnx, rny, rnz, area, rpx1, rpy1, rpz1, rpx2,          &
-            rpy2, rpz2, rflip, a_sum, rd, rdist, theta, tri_area,             &
-            ab_dot_ac, ab_mag, ac_mag, rthresh
+!     SUBROUTINE ppiclf_solve_NearestNeighborSB_OLD(i,SBt,SBc,SBm,SBn,iB)
+!         ! 
+!         ! Input:
+!         !
+!         INTEGER*4 i, SBt, SBn(3), iB(3)  
+!         INTEGER*4 SBc(0:(SBt-1)), SBm(0:(SBt-1),(ppiclf_npart+ppiclf_npart_gp))
+!         ! declare a temporary ghost particle variable. when we want to do the interaction between 2 real particles
+!         ! this ghost will be filled with the data from the 2nd real. this allows user_nearest_neighboor to always assume it has been
+!         ! given 1 real and 1 ghost.
+!         ! 
+!         ! Internal: 
+!         ! 
+!         type(PPICLF_U_t_ghostParticle) tempGhost
+!         REAL*8 xp(3), bin_xMin(3),      &
+!             A(3),B(3),C(3),AB(3),AC(3), distSQ,            &
+!             dist_total, rnx, rny, rnz, area, rpx1, rpy1, rpz1, rpx2,          &
+!             rpy2, rpz2, rflip, a_sum, rd, rdist, theta, tri_area,             &
+!             ab_dot_ac, ab_mag, ac_mag, rthresh
 
-        INTEGER*4 istride, k, kmax, kp, kkp, kk, j, jp, l, iSB, jSB, kSB, loopSB, tempSB, iSBin(3)
+!         INTEGER*4 istride, k, kmax, kp, kkp, kk, j, jp, l, iSB, jSB, kSB, loopSB, tempSB, iSBin(3)
         
-        distSQ = ppiclf_nndist**2
+!         distSQ = ppiclf_nndist**2
     
-        ! find ith particle subbin (tempSB)
-        xp = ppiclf_parts(i)%y%pos%vec
-        DO l = 1,3
-            bin_xMin(l) = ppiclf_bin_pos(1,l)
-        END DO
-        DO l = 1,3
-            iSBin(l) = FLOOR((xp(l) - (bin_xMin(l) - ppiclf_nndist))/ppiclf_nndist)
-        END DO
+!         ! find ith particle subbin (tempSB)
+!         xp = ppiclf_parts(i)%y%pos%vec
+!         DO l = 1,3
+!             bin_xMin(l) = ppiclf_bin_pos(1,l)
+!         END DO
+!         DO l = 1,3
+!             iSBin(l) = FLOOR((xp(l) - (bin_xMin(l) - ppiclf_nndist))/ppiclf_nndist)
+!         END DO
 
-        tempSB = iSBin(1) + iSBin(2)*SBn(1) + iSBin(3)*SBn(1)*SBn(2)
-#ifdef TEST
-        PARTICLE_NN(i) = 0 
-        PPICLF_TOTNNDIST(i) = 0.0D0
-#endif
+!         tempSB = iSBin(1) + iSBin(2)*SBn(1) + iSBin(3)*SBn(1)*SBn(2)
+! #ifdef TEST
+!         PARTICLE_NN(i) = 0 
+!         PPICLF_TOTNNDIST(i) = 0.0D0
+! #endif
 
-        ! Loop through real particles
-        DO iSB = 1,3     !to look at -1,current,+1 x-dir subbins
-            DO jSB = 1,3   !to look at -1,current,+1 x-dir subbins
-                DO kSB = 1,3 !to look at -1,current,+1 x-dir subbins
-                    ! Loops through 27 adjacent subbins
-                    loopSB = tempSB + (-2+iSB) + (-2+jSB)*SBn(1) + (-2+kSB)*SBn(1)*SBn(2)
-                    IF (loopSB .GT. -1 .AND. loopSB .LT. SBt) THEN
-                        DO k = 1,SBc(loopSB) 
-                            j = SBm(loopSB,k)
-                            IF (j .GT. 0) THEN ! Real particle
-                                IF (j .EQ. i) CYCLE ! Same particle
-                                dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_parts(j)%y%pos%vec)**2)
-                                IF (dist_total .GT. distSQ) CYCLE
-#ifdef TEST
-                                PARTICLE_NN(i) = PARTICLE_NN(i) + 1
-                                PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + dist_total
-                                CYCLE !Don't want to call EvalNN. Just testing
-                                    ! nneighbor search
-#endif
-                                call CopyRealToGhost(ppiclf_parts(j), tempGhost)
-                                CALL ppiclf_user_EvalNearestNeighbor(i, ppiclf_parts(i), j, tempGhost)
+!         ! Loop through real particles
+!         DO iSB = 1,3     !to look at -1,current,+1 x-dir subbins
+!             DO jSB = 1,3   !to look at -1,current,+1 x-dir subbins
+!                 DO kSB = 1,3 !to look at -1,current,+1 x-dir subbins
+!                     ! Loops through 27 adjacent subbins
+!                     loopSB = tempSB + (-2+iSB) + (-2+jSB)*SBn(1) + (-2+kSB)*SBn(1)*SBn(2)
+!                     IF (loopSB .GT. -1 .AND. loopSB .LT. SBt) THEN
+!                         DO k = 1,SBc(loopSB) 
+!                             j = SBm(loopSB,k)
+!                             IF (j .GT. 0) THEN ! Real particle
+!                                 IF (j .EQ. i) CYCLE ! Same particle
+!                                 dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_parts(j)%y%pos%vec)**2)
+!                                 IF (dist_total .GT. distSQ) CYCLE
+! #ifdef TEST
+!                                 PARTICLE_NN(i) = PARTICLE_NN(i) + 1
+!                                 PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + dist_total
+!                                 CYCLE !Don't want to call EvalNN. Just testing
+!                                     ! nneighbor search
+! #endif
+!                                 call CopyRealToGhost(ppiclf_parts(j), tempGhost)
+!                                 CALL ppiclf_user_EvalNearestNeighbor(i, ppiclf_parts(i), j, tempGhost)
 
-                            ELSE IF (j .LT. 0) THEN ! Ghost Particle
-                                ! Negative was just use for ghost particle indicator
-                                ! in subbin mapping array. Need to flip sign
-                                j = - j               
-                                dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_gparts(j)%y%pos%vec)**2)  
-                                IF (dist_total .GT. distSQ) CYCLE
-#ifdef TEST
-                                PARTICLE_NN(i) = PARTICLE_NN(i) + 1
-                                PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + dist_total
-                                CYCLE !Don't want to call EvalNN. Just testing
-                                    ! nneighbor search
-#endif
-                                jp = -1*j
-                                CALL ppiclf_user_EvalNearestNeighbor(i,ppiclf_parts(i), jp, ppiclf_gparts(j))
-                            END IF
-                        END DO !k
-                    END IF ! if loopSB is valid
-                END DO !kSB
-            END DO !jSB
-        END DO !iSB
-        istride = ppiclf_ndim
-        do j=1,ppiclf_nwall
+!                             ELSE IF (j .LT. 0) THEN ! Ghost Particle
+!                                 ! Negative was just use for ghost particle indicator
+!                                 ! in subbin mapping array. Need to flip sign
+!                                 j = - j               
+!                                 dist_total = sum((ppiclf_parts(i)%y%pos%vec - ppiclf_gparts(j)%y%pos%vec)**2)  
+!                                 IF (dist_total .GT. distSQ) CYCLE
+! #ifdef TEST
+!                                 PARTICLE_NN(i) = PARTICLE_NN(i) + 1
+!                                 PPICLF_TOTNNDIST(i) = PPICLF_TOTNNDIST(i) + dist_total
+!                                 CYCLE !Don't want to call EvalNN. Just testing
+!                                     ! nneighbor search
+! #endif
+!                                 jp = -1*j
+!                                 CALL ppiclf_user_EvalNearestNeighbor(i,ppiclf_parts(i), jp, ppiclf_gparts(j))
+!                             END IF
+!                         END DO !k
+!                     END IF ! if loopSB is valid
+!                 END DO !kSB
+!             END DO !jSB
+!         END DO !iSB
+!         istride = ppiclf_ndim
+!         do j=1,ppiclf_nwall
 
-            rnx  = ppiclf_wall_n(1,j)
-            rny  = ppiclf_wall_n(2,j)
-            rnz  = 0.0d0
-            area = ppiclf_wall_n(3,j)
-            rpx1 = ppiclf_parts(i)%y%pos%vec(1) !ppiclf_cp_map(1,i)
-            rpy1 = ppiclf_parts(i)%y%pos%vec(2)
-            rpz1 = 0.0d0
-            rpx2 = ppiclf_wall_c(1,j)
-            rpy2 = ppiclf_wall_c(2,j)
-            rpz2 = 0.0d0
-            rpx2 = rpx2 - rpx1
-            rpy2 = rpy2 - rpy1
-            rnz  = ppiclf_wall_n(3,j)
-            area = ppiclf_wall_n(4,j)
-            rpz1 = ppiclf_parts(i)%y%pos%vec(3)
-            rpz2 = ppiclf_wall_c(3,j)
-            rpz2 = rpz2 - rpz1
+!             rnx  = ppiclf_wall_n(1,j)
+!             rny  = ppiclf_wall_n(2,j)
+!             rnz  = 0.0d0
+!             area = ppiclf_wall_n(3,j)
+!             rpx1 = ppiclf_parts(i)%y%pos%vec(1) !ppiclf_cp_map(1,i)
+!             rpy1 = ppiclf_parts(i)%y%pos%vec(2)
+!             rpz1 = 0.0d0
+!             rpx2 = ppiclf_wall_c(1,j)
+!             rpy2 = ppiclf_wall_c(2,j)
+!             rpz2 = 0.0d0
+!             rpx2 = rpx2 - rpx1
+!             rpy2 = rpy2 - rpy1
+!             rnz  = ppiclf_wall_n(3,j)
+!             area = ppiclf_wall_n(4,j)
+!             rpz1 = ppiclf_parts(i)%y%pos%vec(3)
+!             rpz2 = ppiclf_wall_c(3,j)
+!             rpz2 = rpz2 - rpz1
         
-            rflip = rnx*rpx2 + rny*rpy2 + rnz*rpz2
-            IF(rflip .GT. 0.0d0) THEN
-                rnx = -1.0d0*rnx
-                rny = -1.0d0*rny
-                rnz = -1.0d0*rnz
-            END IF
+!             rflip = rnx*rpx2 + rny*rpy2 + rnz*rpz2
+!             IF(rflip .GT. 0.0d0) THEN
+!                 rnx = -1.0d0*rnx
+!                 rny = -1.0d0*rny
+!                 rnz = -1.0d0*rnz
+!             END IF
 
 
-            a_sum = 0.0d0
-            kmax = 3
-            DO k=1,kmax 
-                kp = k+1
-                IF(kp .GT. kmax) kp = kp-kmax ! cycle
+!             a_sum = 0.0d0
+!             kmax = 3
+!             DO k=1,kmax 
+!                 kp = k+1
+!                 IF(kp .GT. kmax) kp = kp-kmax ! cycle
         
-                kk   = istride*(k-1)
-                kkp  = istride*(kp-1)
-                rpx1 = ppiclf_wall_c(kk+1,j)
-                rpy1 = ppiclf_wall_c(kk+2,j)
-                rpz1 = 0.0d0
-                rpx2 = ppiclf_wall_c(kkp+1,j)
-                rpy2 = ppiclf_wall_c(kkp+2,j)
-                rpz2 = 0.0d0
+!                 kk   = istride*(k-1)
+!                 kkp  = istride*(kp-1)
+!                 rpx1 = ppiclf_wall_c(kk+1,j)
+!                 rpy1 = ppiclf_wall_c(kk+2,j)
+!                 rpz1 = 0.0d0
+!                 rpx2 = ppiclf_wall_c(kkp+1,j)
+!                 rpy2 = ppiclf_wall_c(kkp+2,j)
+!                 rpz2 = 0.0d0
 
-                rpz1 = ppiclf_wall_c(kk+3,j)
-                rpz2 = ppiclf_wall_c(kkp+3,j)
+!                 rpz1 = ppiclf_wall_c(kk+3,j)
+!                 rpz2 = ppiclf_wall_c(kkp+3,j)
 
-                rd   = -(rnx*rpx1 + rny*rpy1 + rnz*rpz1)
+!                 rd   = -(rnx*rpx1 + rny*rpy1 + rnz*rpz1)
 
-                rdist = abs(rnx*(ppiclf_parts(i)%y%pos%vec(1))+rny*(ppiclf_parts(i)%y%pos%vec(2))+rnz*(ppiclf_parts(i)%y%pos%vec(3))+rd)
-                rdist = rdist/sqrt(rnx**2 + rny**2 + rnz**2)
+!                 rdist = abs(rnx*(ppiclf_parts(i)%y%pos%vec(1))+rny*(ppiclf_parts(i)%y%pos%vec(2))+rnz*(ppiclf_parts(i)%y%pos%vec(3))+rd)
+!                 rdist = rdist/sqrt(rnx**2 + rny**2 + rnz**2)
 
-                ! give a little extra room for walls (2x)
-                IF(rdist .GT. 2.0d0*ppiclf_nndist) GOTO 1519
+!                 ! give a little extra room for walls (2x)
+!                 IF(rdist .GT. 2.0d0*ppiclf_nndist) GOTO 1519
 
-                ! @{USEPARTICLE(tempGhost%y%pos%x)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ - rdist*rnx
-                ! @{USEPARTICLE(tempGhost%y%pos%y)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ - rdist*rny
-                ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = 0.0d0
-                tempGhost%y%pos = ppiclf_parts(i)%y%pos - (rdist * [rnx, rny, rnz])
+!                 ! @{USEPARTICLE(tempGhost%y%pos%x)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%x)}@ - rdist*rnx
+!                 ! @{USEPARTICLE(tempGhost%y%pos%y)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%y)}@ - rdist*rny
+!                 ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = 0.0d0
+!                 tempGhost%y%pos = ppiclf_parts(i)%y%pos - (rdist * [rnx, rny, rnz])
 
-                A(1) = tempGhost%y%pos%vec(1)
-                A(2) = tempGhost%y%pos%vec(2)
-                A(3) = 0.0d0
+!                 A(1) = tempGhost%y%pos%vec(1)
+!                 A(2) = tempGhost%y%pos%vec(2)
+!                 A(3) = 0.0d0
 
-                B(1) = rpx1
-                B(2) = rpy1
-                B(3) = 0.0d0
+!                 B(1) = rpx1
+!                 B(2) = rpy1
+!                 B(3) = 0.0d0
 
-                C(1) = rpx2
-                C(2) = rpy2
-                C(3) = 0.0d0
+!                 C(1) = rpx2
+!                 C(2) = rpy2
+!                 C(3) = 0.0d0
 
-                AB(1) = B(1) - A(1)
-                AB(2) = B(2) - A(2)
-                AB(3) = 0.0d0
+!                 AB(1) = B(1) - A(1)
+!                 AB(2) = B(2) - A(2)
+!                 AB(3) = 0.0d0
 
-                AC(1) = C(1) - A(1)
-                AC(2) = C(2) - A(2)
-                AC(3) = 0.0d0
+!                 AC(1) = C(1) - A(1)
+!                 AC(2) = C(2) - A(2)
+!                 AC(3) = 0.0d0
 
-                ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ - rdist*rnz
-                A(3) = tempGhost%y%pos%vec(3)
-                B(3) = rpz1
-                C(3) = rpz2
-                AB(3) = B(3) - A(3)
-                AC(3) = C(3) - A(3)
+!                 ! @{USEPARTICLE(tempGhost%y%pos%z)}@ = @{USEPARTICLE(ppiclf_parts(i)%y%pos%z)}@ - rdist*rnz
+!                 A(3) = tempGhost%y%pos%vec(3)
+!                 B(3) = rpz1
+!                 C(3) = rpz2
+!                 AB(3) = B(3) - A(3)
+!                 AC(3) = C(3) - A(3)
 
-                AB_DOT_AC = AB(1)*AC(1) + AB(2)*AC(2) + AB(3)*AC(3)
-                AB_MAG = sqrt(AB(1)**2 + AB(2)**2 + AB(3)**2)
-                AC_MAG = sqrt(AC(1)**2 + AC(2)**2 + AC(3)**2)
-                theta  = acos(AB_DOT_AC/(AB_MAG*AC_MAG))
-                tri_area = 0.5d0*AB_MAG*AC_MAG*sin(theta)
-                a_sum = a_sum + tri_area
-            END DO
+!                 AB_DOT_AC = AB(1)*AC(1) + AB(2)*AC(2) + AB(3)*AC(3)
+!                 AB_MAG = sqrt(AB(1)**2 + AB(2)**2 + AB(3)**2)
+!                 AC_MAG = sqrt(AC(1)**2 + AC(2)**2 + AC(3)**2)
+!                 theta  = acos(AB_DOT_AC/(AB_MAG*AC_MAG))
+!                 tri_area = 0.5d0*AB_MAG*AC_MAG*sin(theta)
+!                 a_sum = a_sum + tri_area
+!             END DO
 
-            rthresh = 1.10d0 ! keep it from slipping through crack on edges
-            IF(a_sum .GT. rthresh*area) CYCLE
+!             rthresh = 1.10d0 ! keep it from slipping through crack on edges
+!             IF(a_sum .GT. rthresh*area) CYCLE
 
-            jp = 0
-            CALL ppiclf_user_EvalNearestNeighbor(i, ppiclf_parts(i), jp, tempGhost)!       &
-                ! ,ppiclf_cp_map(1,i)                       &
-                ! ,ppiclf_cp_map(1+PPICLF_LRS,i)            &
-                ! ,ydum                                     &
-                ! ,rpropdum)
+!             jp = 0
+!             CALL ppiclf_user_EvalNearestNeighbor(i, ppiclf_parts(i), jp, tempGhost)!       &
+!                 ! ,ppiclf_cp_map(1,i)                       &
+!                 ! ,ppiclf_cp_map(1+PPICLF_LRS,i)            &
+!                 ! ,ydum                                     &
+!                 ! ,rpropdum)
 
-            1519 continue
-        ENDdo
+!             1519 continue
+!         ENDdo
 
-        RETURN
-    END SUBROUTINE ppiclf_solve_NearestNeighborSB_OLD
+!         RETURN
+!     END SUBROUTINE ppiclf_solve_NearestNeighborSB_OLD
 
     ! had PPICLC
     SUBROUTINE ppiclf_solve_WriteVTU(time)
@@ -1376,7 +1384,7 @@ module ppiclf_solve
         ! RETURN
     END SUBROUTINE ppiclf_solve_InterpFieldUserOLD
 
-    SUBROUTINE ppiclf_solve_InterpFieldUser(infld)
+    SUBROUTINE ppiclf_solve_InterpFieldUser(nCells, infld)
         !
         ! This is called by rocpicl/PICL_TEMP_Runge.F90 each timestep
         !
@@ -1384,19 +1392,17 @@ module ppiclf_solve
         ! Input: 
         !
         type(PPICLF_U_t_interp), intent(in) :: infld(:)
+        integer*4, intent(in) :: nCells
         !
         ! Internal:
         !
-        integer*4 nCells
         
         IF(PPICLF_INTERP .EQ. 0) CALL ppiclf_exittr('No specified interpolated fields, set PPICLF_LRP_INT$',0.0d0,0)
-
-        nCells = size(infld)
 
         ! didn't get interp data for the number of cells we expected, so error out
         if (nCells .ne. ppiclf_nFVCells) CALL ppiclf_exittr("# of cells given in ppiclf_solve_InterpFieldUser != # of cells from ppiclf_comm_InitOverlapGrid: ", real(nCells, kind(0.0d0)), ppiclf_nFVCells)
 
-        PPICLF_INT_FLD_INPUT(1:nCells) = infld
+        PPICLF_INT_FLD_INPUT(1:nCells) = infld(1:nCells)
         
         
     END SUBROUTINE ppiclf_solve_InterpFieldUser
@@ -2013,12 +2019,12 @@ module ppiclf_solve
             END DO !i
 #ifdef TEST
             ! These are same feedback equations used in unit testing
-            x_norm = (ppiclf_y(PPICLF_JX, ip) - ppiclf_binb(1)) / (ppiclf_binb(2) - ppiclf_binb(1))
-            y_norm = (ppiclf_y(PPICLF_JY, ip) - ppiclf_binb(3)) / (ppiclf_binb(4) - ppiclf_binb(3))
-            z_norm = (ppiclf_y(PPICLF_JZ, ip) - ppiclf_binb(5)) / (ppiclf_binb(6) - ppiclf_binb(5))
+            x_norm = (ppiclf_parts(ip)%y%pos%vec(1) - ppiclf_binb(1)) / (ppiclf_binb(2) - ppiclf_binb(1))
+            y_norm = (ppiclf_parts(ip)%y%pos%vec(2) - ppiclf_binb(3)) / (ppiclf_binb(4) - ppiclf_binb(3))
+            z_norm = (ppiclf_parts(ip)%y%pos%vec(3) - ppiclf_binb(5)) / (ppiclf_binb(6) - ppiclf_binb(5))
 
-            ppiclf_feedbk(1,ip) = 1
-            ppiclf_feedbk(2,ip) = SIN(2*PI*x_norm) + SIN(2*PI*y_norm) + SIN(2*PI*z_norm)
+            ppiclf_part_feedback(ip)%FX = 1
+            ppiclf_part_feedback(ip)%FY = SIN(2*PI*x_norm) + SIN(2*PI*y_norm) + SIN(2*PI*z_norm)
 #endif     
 
 ! #:for particle, n in fyppmacros.Loop_All_Reals("ppiclf_parts(i)%feedback")

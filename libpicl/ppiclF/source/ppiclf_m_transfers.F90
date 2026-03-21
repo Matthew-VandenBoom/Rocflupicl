@@ -4,7 +4,7 @@ module ppiclf_m_transfers
     use mpi 
 
     ! used data/procedures
-    use ppiclf_data, only: ppiclf_np
+    use ppiclf_data, only: ppiclf_np, ppiclf_nid
     use ppiclf_op, only: ppiclf_exittr
 
     ! types we want to define an alltoallv for
