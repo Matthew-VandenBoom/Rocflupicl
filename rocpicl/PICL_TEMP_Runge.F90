@@ -904,7 +904,7 @@ END IF
       ! CALL ppiclf_solve_InterpFieldUser(PPICLF_R_JSDOX,SDOX,nCells)  
       ! CALL ppiclf_solve_InterpFieldUser(PPICLF_R_JSDOY,SDOY,nCells)  
       ! CALL ppiclf_solve_InterpFieldUser(PPICLF_R_JSDOZ,SDOZ,nCells)  
-      call ppiclf_solve_InterpFieldUser(interpData)
+      call ppiclf_solve_InterpFieldUser(ncells, interpData)
       CALL MPI_BARRIER(global%mpiComm,errorFlag)
 
  ! Solve RK stage of time stepping particle solution

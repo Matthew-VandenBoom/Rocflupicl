@@ -10,6 +10,7 @@ ifeq ($(PERF),1)
     PPICLF_FFLAGS += -DPERF
 endif
 
+TOOLCHAIN=GNU
 PREPROCDEFINES+=-DNDIM=3
  	           
 INSTALL_LOCATION = .
@@ -18,15 +19,40 @@ INSTALL_LOCATION = .
 # DO NOT TOUCH BELOW
 ####################
 
-# PPICLF LIBRARY
+# PPICLF LIBRARY PATHS
 SOURCE_ROOT_PPICLF=$(INSTALL_LOCATION)/ppiclF/source
 SOURCE_ROOT_USER=$(INSTALL_LOCATION)/user_files
 BUILD_ROOT_PPICLF=$(INSTALL_LOCATION)/ppiclF/build
 BUILD_ROOT_USER=$(BUILD_ROOT_PPICLF)/user
-PPICLF_IFLAGS+=-I$(SOURCE_ROOT_PPICLF)/include -I$(SOURCE_ROOT_USER) -I$(SOURCE_ROOT_USER)/include 
-PPICLF_FFLAGS+=$(PPICLF_IFLAGS) -cpp -Wall -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5
-PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -J$(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
-PPICLF_FFLAGS+=-J$(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
+
+
+
+
+# COMPILER FLAGS
+PPICLF_IFLAGS+=-I$(SOURCE_ROOT_PPICLF)/include -I$(SOURCE_ROOT_USER) -I$(SOURCE_ROOT_USER)/include
+
+PPICLF_FFLAGS+=$(PPICLF_IFLAGS)
+
+ifeq ($(TOOLCHAIN),GNU)
+    PPICLF_FFLAGS += -ffree-line-length-none -Wno-missing-include-dirs -fmax-errors=5 -g -gdwarf-4 -O0 -fno-omit-frame-pointer -cpp -Wall
+    PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -J$(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
+    PPICLF_FFLAGS+=-J$(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
+    PREPROC_FLAG = -E
+else ifeq ($(TOOLCHAIN),NVHPC)
+    PPICLF_FFLAGS += -g -O0 -Wall
+    PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -module $(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
+    PPICLF_FFLAGS+=-module $(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
+    PREPROC_FLAG = -cpp
+else ifeq ($(TOOLCHAIN),INTEL)
+    PPICLF_FFLAGS += -g -O0 -free -fpp  -Wp,-macro_expand=cpp
+    PPICLF_USER_FFLAGS:=$(PPICLF_FFLAGS) -module $(BUILD_ROOT_USER) -I$(BUILD_ROOT_PPICLF)
+    PPICLF_FFLAGS+=-module $(BUILD_ROOT_PPICLF) -I$(BUILD_ROOT_USER)
+    PREPROC_FLAG = -preprocess-only
+else
+    PPICLF_FFLAGS += UNKNOWN_TOOLCHAIN_IN_PPICLF_MAKE
+endif
+
+
 
 # GSLIB LIBRARY
 SOURCE_ROOT_GSLIB=$(INSTALL_LOCATION)/ppiclF/3rd_party/gslib
@@ -188,18 +214,18 @@ $(BUILD_ROOT_USER)/ppiclf_user_subbinMap.o: $(BUILD_ROOT_USER)/ppiclf_m_user_dat
 $(BUILD_ROOT_PPICLF)/%.o : $(SOURCE_ROOT_PPICLF)/%.F90
 	@echo called standard build on $<
 	@mkdir -vp $(BUILD_ROOT_PPICLF)
-# 	@$(FC) $< -E -o $(BUILD_ROOT_PPICLF)/$*.i $(PPICLF_FFLAGS)
+	@$(FC) $< $(PREPROC_FLAG) -o $(BUILD_ROOT_PPICLF)/$*.i $(PPICLF_FFLAGS)
 	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
 $(BUILD_ROOT_PPICLF)/%.f90 : $(SOURCE_ROOT_PPICLF)/%.F90
 	@echo called standard preprocess on $<
 	@mkdir -vp $(BUILD_ROOT_PPICLF)
-	@$(FC) $< -E -o $@ $(PPICLF_FFLAGS)
+	@$(FC) $< $(PREPROC_FLAG) -o $@ $(PPICLF_FFLAGS)
 
 $(BUILD_ROOT_PPICLF)/ppiclf_io.f90 $(BUILD_ROOT_PPICLF)/ppiclf_io.o : $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90
 	@echo called custom ppiclf_io build
 	@mkdir -vp $(BUILD_ROOT_PPICLF)
-	@$(FC) $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90 -E -o $(BUILD_ROOT_PPICLF)/ppiclf_io.i $(PPICLF_FFLAGS) -P
-	@sed 's/RE_NEWLINE/\n/g' $(BUILD_ROOT_PPICLF)/ppiclf_io.i > $(BUILD_ROOT_PPICLF)/ppiclf_io.f90
+	@$(FC) $(SOURCE_ROOT_PPICLF)/ppiclf_io.F90 $(PREPROC_FLAG) -o $(BUILD_ROOT_PPICLF)/ppiclf_io.i $(PPICLF_FFLAGS) -P -g1
+	@sed 's/RE_NEWLINE/\n/g; s/RE_AMPERSAND/\&/g' $(BUILD_ROOT_PPICLF)/ppiclf_io.i > $(BUILD_ROOT_PPICLF)/ppiclf_io.f90
 	@echo $@
 	@echo $<
 	@$(if $(and $(findstring ./$@,$(BUILD_ROOT_PPICLF)/ppiclf_io.o),$(findstring $(BUILD_ROOT_PPICLF)/ppiclf_io.o,./$@)),@$(FC) $(BUILD_ROOT_PPICLF)/ppiclf_io.f90 -c -o $@ $(PPICLF_FFLAGS))
@@ -226,7 +252,7 @@ $(BUILD_ROOT_USER)/%.o : $(SOURCE_ROOT_USER)/%.F90
 
 # $(BUILD_ROOT_PPICLF)/%.o : $(BUILD_ROOT_USER)/%.f90
 # 	@mkdir -vp $(BUILD_ROOT_USER)
-# 	@$(FC) $< -E -o $(BUILD_ROOT_USER)/$*.i $(PPICLF_FFLAGS)
+# 	@$(FC) $< $(PREPROC_FLAG) -o $(BUILD_ROOT_USER)/$*.i $(PPICLF_FFLAGS)
 # 	@$(FC) $< -c -o $@ $(PPICLF_FFLAGS)
 
 

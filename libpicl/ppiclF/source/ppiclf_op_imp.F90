@@ -311,8 +311,9 @@ submodule (ppiclf_op) ppiclf_op_imp
         integer*4 ilen, ierr, k
         
         call ppiclf_blank(stringo,fixed_str_len)
-        call ppiclf_chcopy(stringo,stringi,len(stringi))
         ilen = len(stringi) !ppiclf_indx1(stringo,'$')
+        stringo(1:ilen) = stringi(1:ilen)
+        ! call ppiclf_chcopy(stringo,stringi,len(stringi))
         write(s25,25) rdata,idata
         25 format(1x,1p1e14.6,i10)
         call ppiclf_chcopy(stringo(ilen + 1:),s25,25)
@@ -345,8 +346,9 @@ submodule (ppiclf_op) ppiclf_op_imp
         return
 #endif
         call ppiclf_blank(stringo,fixed_str_len)
-        call ppiclf_chcopy(stringo,stringi,len(stringi))
-        ilen = ppiclf_indx1(stringo,'$')
+        ilen = len(stringi) !ppiclf_indx1(stringo,'$')
+        stringo(1:ilen) = stringi(1:ilen)
+        ! call ppiclf_chcopy(stringo,stringi,len(stringi))
         write(s25,25) rdata,idata
         25 format(1x,1p1e14.6,i10)
         call ppiclf_chcopy(stringo(ilen:),s25,25)
@@ -378,8 +380,9 @@ submodule (ppiclf_op) ppiclf_op_imp
         return
 #endif
         call ppiclf_blank(stringo,fixed_str_len)
-        call ppiclf_chcopy(stringo,stringi,len(stringi))
-        ilen = ppiclf_indx1(stringo,'$')
+        ilen = len(stringi) !ppiclf_indx1(stringo,'$')
+        stringo(1:ilen) = stringi(1:ilen)
+        ! call ppiclf_chcopy(stringo,stringi,len(stringi))
         write(s10,10) idata
         10 format(1x,i9)
         call ppiclf_chcopy(stringo(ilen:),s10,10)
@@ -411,8 +414,9 @@ submodule (ppiclf_op) ppiclf_op_imp
         return
 #endif
         call ppiclf_blank(stringo,fixed_str_len)
-        call ppiclf_chcopy(stringo,stringi,len(stringi))
-        ilen = ppiclf_indx1(stringo,'$')
+        ilen = len(stringi) !ppiclf_indx1(stringo,'$')
+        stringo(1:ilen) = stringi(1:ilen)
+        ! call ppiclf_chcopy(stringo,stringi,len(stringi))
         write(s15,15) rdata
         15 format(1x,1p1e14.6)
         call ppiclf_chcopy(stringo(ilen:),s15,15)
@@ -442,8 +446,9 @@ submodule (ppiclf_op) ppiclf_op_imp
         return
 #endif
         call ppiclf_blank(stringo,fixed_str_len)
-        call ppiclf_chcopy(stringo,stringi,len(stringi))
-        ilen = ppiclf_indx1(stringo,'$')
+        ilen = len(stringi) !ppiclf_indx1(stringo,'$')
+        stringo(1:ilen) = stringi(1:ilen)
+        ! call ppiclf_chcopy(stringo,stringi,len(stringi))
 
         call mpi_barrier(ppiclf_comm,ierr)
 

@@ -361,7 +361,7 @@ module PPICLF_user_particle
     end function interpDIVScalar
 
     ! feedback addition overloads
-    pure module function feedbackADDfeedback(f1, f2) result(resFDBK)
+    pure function feedbackADDfeedback(f1, f2) result(resFDBK)
         type(PPICLF_U_t_feedback), intent(in) :: f1, f2
         type(PPICLF_U_t_feedback) :: resFDBK
         resFDBK%PHIP    = f1%PHIP   + f2%PHIP
@@ -389,7 +389,7 @@ module PPICLF_user_particle
     end function feedbackADDfeedback
 
     ! feedback multiplication overloads
-    pure module function feedbackMULTscalar(f1, s) result(resFDBK)
+    pure function feedbackMULTscalar(f1, s) result(resFDBK)
         type(PPICLF_U_t_feedback), intent(in) :: f1
         real*8, intent(in) :: s
         type(PPICLF_U_t_feedback) :: resFDBK
@@ -417,7 +417,7 @@ module PPICLF_user_particle
         resFDBK%TSG3    = f1%TSG3   * s
     end function feedbackMULTscalar
 
-    pure module function partEQpart(p1, p2) result(res)
+    pure function partEQpart(p1, p2) result(res)
         type(PPICLF_U_t_particle), intent(in) :: p1, p2
         logical res
         res = .true.

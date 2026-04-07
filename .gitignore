@@ -44,8 +44,13 @@ libpicl/unit_tests/*.txt
 libpicl/unit_tests/CodePerformance_UnitTest
 libpicl/unit_tests/CreateBin_UnitTest
 libpicl/unit_tests/InterpProj_UnitTest
-libpicl/unit_tests/Particle2Particle_UnitTest
+libpicl/unit_tests/P2PNN_UnitTest
 libpicl/unit_tests/run*
 libpicl/unit_tests/*.txt
-libpicl/unit_tests/unitTestSrc/*.o
+libpicl/unit_tests/*.o
+libpicl/unit_tests/*.mod
+libpicl/unit_tests/*.smod
 libpicl/unit_tests/unitTestSrc/PPICLF_UNIT_TEST
+
+# vscode config files
+.vscode/*

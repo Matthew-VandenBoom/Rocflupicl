@@ -32,7 +32,7 @@ module ppiclf_solve
     ! used functions/subroutines
     use ppiclf_op, only: ppiclf_exittr, ppiclf_iglsum, ppiclf_glsum, ppiclf_copy, ppiclf_icopy, ppiclf_prints, ppiclf_printsi
     use ppiclf_m_comm, only: ppiclf_comm_CreateBin, ppiclf_comm_FindParticle, ppiclf_comm_MoveParticle, ppiclf_comm_MapOverlapGrid, ppiclf_comm_MoveGhost, ppiclf_comm_CreateGhost
-    use ppiclf_io, only: ppiclf_io_WriteParticleVTU, ppiclf_io_WriteBinVTU, ppiclf_io_OutputDiagAll
+    use ppiclf_io, only: ppiclf_io_WriteParticleVTU, ppiclf_io_WriteBinVTU, ppiclf_io_OutputDiagAll, ppiclf_io_InitParticleVTU
     use ppiclf_initsolve, only: ppiclf_solve_InitZero
     use ppiclf_m_particledata, only: CopyRealToGhost
 
@@ -88,6 +88,8 @@ module ppiclf_solve
         ! Includes collisions, Added mass, pseudo-turbulence, and qs
         ! fluctuations
         PPICLF_PPInteractions = PP
+
+        call ppiclf_io_InitParticleVTU
 
         ! Linear X-Periodicity
         ppiclf_xdrange(1,1) = xpmin
@@ -848,7 +850,8 @@ module ppiclf_solve
         ! Internal:
         !
         LOGICAL iout
-
+        integer*4 npart_global, ierr
+        
 #ifdef PERF
         REAL*8    tstart, tfinal
         REAL*8    tsPeriodic, tfPeriodic
@@ -872,7 +875,10 @@ module ppiclf_solve
 
         tstart = MPI_WTIME()
 #endif
+        npart_global = ppiclf_iglsum([ppiclf_npart], 1)
 
+        if (npart_global .gt. 0) call mpi_barrier(ppiclf_comm, ierr)
+        
         ppiclf_cycle  = istep
         ppiclf_iostep = iostep
         ppiclf_dt     = dt
@@ -1171,7 +1177,8 @@ module ppiclf_solve
             tfinal = MPI_WTIME()
             PPICLF_TInterpolation = PPICLF_TInterpolation +tfinal - tstart    
 #endif
-            CALL ppiclf_user_YdotParticle(i, ppiclf_parts(i), interp, feedback, ierr)
+            CALL ppiclf_user_YdotParticle(i, ppiclf_parts(i), interp, ppiclf_part_feedback(i), ierr)
+            if (ierr .ne. 0) call ppiclf_exittr("YdotParticle returned error code: ", 0.0d0, ierr)
         end do ! i: ppiclf_npart
         call ppiclf_user_SetYdotFinal
         RETURN
@@ -1512,7 +1519,7 @@ module ppiclf_solve
 
     SUBROUTINE ppiclf_solve_SBParticleToCellMap
         ! Local Variables
-        INTEGER*4 i, j, k, l, ix, iy, iz, ip, ie, iee, nxyz, nnearest, CellID_nearest(28), partCount
+        INTEGER*4 i, j, k, l, ix, iy, iz, ip, ie, iee, nxyz, nnearest, CellID_nearest(28), partCount, ierr
         REAL*8    dSQl, dSQi, dSQ(28), xp(3), dl, CellCenter(3,28), w(27), binblength(3), Max_CellLen(3), Max_CellLenSQ(3), dSQchk(3)
         LOGICAL   added, farAway, alreadyMapped
  
@@ -1535,7 +1542,10 @@ module ppiclf_solve
 #endif
         !***************************************************************
 
-        IF(ppiclf_npart .LT. 1) RETURN
+        IF(ppiclf_npart .LT. 1) then
+            call mpi_barrier(ppiclf_comm, ierr)
+            RETURN
+        end if
         IF(ppiclf_nCells_FV2PICL .EQ. 0 .AND. ppiclf_npart .GT. 0) THEN
             PRINT*,'ERROR: ',ppiclf_npart, 'Particles mapped to bin:',ppiclf_nid
             PRINT*,'No cells mapped to bin for Interpolation/Projection.'
@@ -1752,6 +1762,7 @@ module ppiclf_solve
             END IF 
         END DO !ip
 
+        call mpi_barrier(ppiclf_comm, ierr)
         IF(ppiclf_remove_particle) THEN
             ! Delete particles that are outside of fluid grid
             CALL ppiclf_solve_RemoveParticle

@@ -318,6 +318,7 @@ module procedure ppiclf_user_YdotParticle
 
 
     ! rpi        = acos(-1.0d0)
+    ierr = 0
     rcp_part   = ppiclf_rcp_part
     rpr        = 0.70d0
     rcp_fluid  = 1004.64d0
@@ -687,6 +688,7 @@ module procedure ppiclf_user_YdotParticle
     !
     if (heattransfer_flag >= 1) then
         call ppiclf_user_HT_driver(particle, interp, qq, rkappa, dp, rep, rpr, rmachp, rphif, ierr)
+        if (ierr .ne. 0) return
     endif ! heattransfer_flag >= 1
 
 

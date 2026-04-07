@@ -136,6 +136,8 @@
 #define PASTE(a) a
 #define CAT(a,b) PASTE(a)b
 #else
-#define PASTE(a) a ## b
-#define CAT(a,b) PASTE(a,b)
+#define PASTE(a,b) a ## b
+#define CAT(a,b) a##b
+
+#define isnan(var) (var .ne. var)
 #endif

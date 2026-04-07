@@ -666,7 +666,7 @@ END IF
 
 ! Sets ppiclf_nndist, ppiclf_filter(1:3), ppiclf_y(), ppiclf_rprop()
 !(imethod (RK pick), nDimensions, iendian (IO format), .....)
-CALL ppiclf_solve_InitParticle(2,3,0,particles,filter,neighborWidth) 
+CALL ppiclf_solve_InitParticle(2,3,0,npart_local, particles,filter,neighborWidth) 
 IF(global%myProcid == MASTERPROC) THEN
   PRINT*, 'x fluid min/max', x_per_min, x_per_max
   PRINT*, 'y fluid min/max', y_per_min, y_per_max

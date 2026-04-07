@@ -40,14 +40,15 @@ module ppiclf_io
     public :: ppiclf_io_OutputDiagGrid
     public :: ppiclf_io_OutputDiagGhost
 
-#define VTU_INCLUDE(name, prop, size) + size &
-    integer*4, parameter :: rout_size_per_part = (0 &
+#define VTU_INCLUDE(name, prop, size) + size RE_AMPERSAND
+    integer*4, parameter :: rout_size_per_part = (0 RE_AMPERSAND
 #include <PPICLF_USER_PART_VTU_MAP.h>
     )
 #undef VTU_INCLUDE
 
-#define VTU_INCLUDE(name, prop, size) + 1 &
-    integer*4, parameter :: ParticleVTU_NumDataArrays = (0 &
+#define VTU_INCLUDE(name, prop, size) + 1 RE_AMPERSAND
+
+    integer*4, parameter :: ParticleVTU_NumDataArrays = (0 RE_AMPERSAND
 #include <PPICLF_USER_PART_VTU_MAP.h>
     )
 #undef VTU_INCLUDE
@@ -626,8 +627,9 @@ module ppiclf_io
 
             inquire(file=vtufile,size=ivtu_size)
         endif
-
+        print*, "rank:", ppiclf_nid, "ivtu_size:", ivtu_size
         call ppiclf_bcast(ivtu_size, isize)
+        print*, "rank:", ppiclf_nid, "ivtu_size:", ivtu_size
 
         iorank = -1
 
@@ -1024,7 +1026,7 @@ module ppiclf_io
             call ppiclf_io_WriteDataArrayVTU(vtu, name, size, data_offset) RE_NEWLINE\
             ParticleVTU_DataArrays(i, 2) = data_offset RE_NEWLINE\
             data_offset = data_offset + ParticleVTU_DataArrays(i, 1) * isize * npt_total + isize RE_NEWLINE\
-            i = i + ParticleVTU_DataArrays(i, 1)
+            i = i + 1
 #include <PPICLF_USER_PART_VTU_MAP.h>
 #undef VTU_INCLUDE
             write(vtu,'(A)',advance='yes') '   </PointData> '
@@ -1063,6 +1065,7 @@ module ppiclf_io
         endif
 
         call ppiclf_bcast(ivtu_size, isize)
+        call ppiclf_bcast(ParticleVTU_DataArrays, 4*(ParticleVTU_NumDataArrays + 1)*2)
         iorank = -1
         
         
@@ -1109,6 +1112,7 @@ module ppiclf_io
             rout(i_rout : i_rout + size - 1) = ParticleVTUWriteProp(ppiclf_parts(i)%prop) RE_NEWLINE\
             i_rout = i_rout + size RE_NEWLINE\
         end do RE_NEWLINE\
+        call ParticleVTUAppendArrayLen(vtu, vtufile, ParticleVTU_DataArrays(j, 1) * npt_total * isize) RE_NEWLINE\
         call mpi_barrier(ppiclf_comm,ierr) RE_NEWLINE\
         call ppiclf_byte_open_mpi(vtufile,pth,.false.,ierr) RE_NEWLINE\
         call ppiclf_byte_set_view(idisp_pos,pth) RE_NEWLINE\
@@ -1134,7 +1138,7 @@ module ppiclf_io
         call ppiclf_printsi(' *End WriteParticleVTU$',ppiclf_cycle)
 
         call mpi_barrier(ppiclf_comm, ierr)
-        call ppiclf_exittr("Finished WriteParticleVTU", 0.0d0, 0)
+        ! call ppiclf_exittr("Finished WriteParticleVTU", 0.0d0, 0)
         return
     END SUBROUTINE ppiclf_io_WriteParticleVTU
 
@@ -1744,7 +1748,7 @@ module ppiclf_io
 
     subroutine ParticleVTUInit_real(i, partProp, ArraysInfo)
         integer*4, intent(inout) :: i
-        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        integer*4, intent(inout) :: ArraysInfo(0:ParticleVTU_NumDataArrays, 2)
         real*8, intent(inout) :: partProp
         ArraysInfo(i, 1) = 1
         i = i + 1
@@ -1752,7 +1756,7 @@ module ppiclf_io
 
     subroutine ParticleVTUInit_int(i, partProp, ArraysInfo)
         integer*4, intent(inout) :: i
-        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        integer*4, intent(inout) :: ArraysInfo(0:ParticleVTU_NumDataArrays, 2)
         integer*4, intent(inout) :: partProp
         ArraysInfo(i, 1) = 1
         i = i + 1
@@ -1760,7 +1764,7 @@ module ppiclf_io
 
     subroutine ParticleVTUInit_tag(i, partProp, ArraysInfo)
         integer*4, intent(inout) :: i
-        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        integer*4, intent(inout) :: ArraysInfo(0:ParticleVTU_NumDataArrays, 2)
         type(PPICLF_t_tag), intent(inout) :: partProp
         ArraysInfo(i, 1) = 3
         i = i + 1
@@ -1768,7 +1772,7 @@ module ppiclf_io
 
     subroutine ParticleVTUInit_realNVec(i, partProp, ArraysInfo)
         integer*4, intent(inout) :: i
-        integer*4, intent(inout) :: ArraysInfo(ParticleVTU_NumDataArrays, 1)
+        integer*4, intent(inout) :: ArraysInfo(0:ParticleVTU_NumDataArrays, 2)
         type(PPICLF_t_realNVec), intent(inout) :: partProp
         ArraysInfo(i, 1) = 3
         i = i + 1

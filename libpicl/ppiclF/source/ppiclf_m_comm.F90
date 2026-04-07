@@ -148,6 +148,8 @@ module ppiclf_m_comm
         ! External:
         !
         INTEGER*4 ie, i, ierr
+        character(len=22) filename ! rankXXX_fluid_grid.txt
+        integer unitNum
         !
         ppiclf_overlap = .TRUE.
 
@@ -169,6 +171,17 @@ module ppiclf_m_comm
             END DO
         END DO
 
+        if (.true.) then
+            filename = "rankXXX_fluid_grid.txt"
+            write(filename(5:7), "(I3.3)") ppiclf_nid
+            print*, filename
+            open(newunit=unitNum, file=filename, action="write")
+            DO ie=1,ppiclf_nFVCells
+                write(unitNum, *) ppiclf_fluid_grid(:, ie)
+            END DO
+            close(unitNum)
+        end if
+        call mpi_barrier(ppiclf_comm, ierr)
         RETURN
     END SUBROUTINE ppiclf_comm_InitOverlapGrid
 
@@ -216,7 +229,8 @@ module ppiclf_m_comm
         END DO
 
         mins = huge(1.0d0)
-        maxes = tiny(1.0d0)
+        ! maxes = tiny(1.0d0)
+        maxes = -huge(1.0d0)
 
         ! Looping through particles on this processor
         ! to find bin boundary locations
@@ -253,11 +267,13 @@ module ppiclf_m_comm
         ! bins again and do not remap overlap grid.
         BinCheck = 0
         DO i = 1,3
-            IF((ppiclf_binb(2*i-1) + BinBuffer(i)) .LT. ppiclf_previousbinb(2*i-1)) THEN
+            ! IF((ppiclf_binb(2*i-1) + BinBuffer(i)) .LT. ppiclf_previousbinb(2*i-1)) THEN
+            IF((ppiclf_binb(2*i-1)) .LT. ppiclf_previousbinb(2*i-1)) THEN
                 BinCheck = 1
                 EXIT
             END IF
-            IF((ppiclf_binb(2*i)   - BinBuffer(i)) .GT. ppiclf_previousbinb(2*i)) THEN
+            ! IF((ppiclf_binb(2*i)   - BinBuffer(i)) .GT. ppiclf_previousbinb(2*i)) THEN
+            IF((ppiclf_binb(2*i)) .GT. ppiclf_previousbinb(2*i)) THEN
                 BinCheck = 1
                 EXIT
             END IF
